@@ -1,0 +1,11 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "Test-Path": true,
+        "/^git init && git config user\\.name \"gearspot-bot\" && git config user\\.email \"bot@localhost\" && git checkout -b feature/complete-release && git add \\. && git commit -m \"chore: prepare release — scaffold, CI, tests, E2E, release templates\" \\|\\| true$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "git init": true,
+        "git config": true
+    }
+}

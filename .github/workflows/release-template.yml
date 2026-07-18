@@ -1,0 +1,34 @@
+name: Release (template)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install dependencies
+        run: npm ci
+      - name: EAS build (Android)
+        env:
+          EAS_TOKEN: ${{ secrets.EAS_TOKEN }}
+        run: |
+          if [ -z "${EAS_TOKEN}" ]; then echo "EAS_TOKEN missing — skip Android build"; else npx eas-cli build --platform android --non-interactive --profile production; fi
+      - name: EAS build (iOS)
+        env:
+          EAS_TOKEN: ${{ secrets.EAS_TOKEN }}
+        run: |
+          if [ -z "${EAS_TOKEN}" ]; then echo "EAS_TOKEN missing — skip iOS build"; else npx eas-cli build --platform ios --non-interactive --profile production; fi
+      - name: Web build and deploy (Vercel)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npm run web --silent || echo "Expo web build skipped"
+          if [ -z "${VERCEL_TOKEN}" ]; then echo "VERCEL_TOKEN missing — skip web deploy"; else npx vercel --prod --token "$VERCEL_TOKEN"; fi
+
+# NOTE: This is a template. Populate steps with real eas-cli commands and ensure secrets are added.

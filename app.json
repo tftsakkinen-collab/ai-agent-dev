@@ -1,0 +1,7 @@
+{
+  "expo": {
+    "name": "Gearspot",
+    "slug": "gearspot-app",
+    "platforms": ["ios", "android", "web"]
+  }
+}
