@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { SafeAreaView, View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
-import { fetchJson } from '../lib/api';
+import { fetchJson, getProfile } from '../lib/api';
 
 const paymentMethods = [
   { id: 'visa', label: 'Visa' },
@@ -16,8 +16,15 @@ export default function BookingScreen({ route, navigation }) {
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0].id);
   const [cardLast4, setCardLast4] = useState('4242');
 
+  React.useEffect(() => {
+    getProfile()
+      .then((profile) => setEmail(profile.email || ''))
+      .catch(() => setEmail(''));
+  }, []);
+
   const submit = async () => {
-    if (!name || !email) return Alert.alert('Täytä nimi ja sähköposti');
+    if (!name) return Alert.alert('Täytä nimi');
+    if (!email) return Alert.alert('Kirjaudu ensin sisään', 'Tarvitsemme vahvistetun sähköpostin varaukselle.');
     if (!product) return Alert.alert('Tuote puuttuu');
     if (cardLast4.trim().length < 4) return Alert.alert('Täytä maksutavan tunniste', 'Anna vähintään 4 numeroa mock-maksua varten.');
 
@@ -28,7 +35,6 @@ export default function BookingScreen({ route, navigation }) {
         body: JSON.stringify({
           productId: product.id,
           name,
-          email,
           paymentMethod,
           cardLast4
         })
@@ -60,7 +66,7 @@ export default function BookingScreen({ route, navigation }) {
           <Text style={styles.label}>Nimi</Text>
           <TextInput placeholder="Nimi" value={name} onChangeText={setName} style={styles.input} autoCapitalize="words" />
           <Text style={styles.label}>Sähköposti</Text>
-          <TextInput placeholder="Sähköposti" value={email} onChangeText={setEmail} style={styles.input} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+          <TextInput placeholder="Kirjaudu nähdäksesi sähköpostin" value={email} style={styles.input} editable={false} />
           <Text style={styles.label}>Maksutapa</Text>
           <View style={styles.paymentMethodRow}>
             {paymentMethods.map((method) => (

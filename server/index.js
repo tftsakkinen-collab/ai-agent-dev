@@ -2,8 +2,13 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const app = express();
 const port = process.env.PORT || 3000;
+const authSecret = process.env.AUTH_SECRET || 'gearspot-dev-auth-secret';
+const exposeAuthCode = process.env.AUTH_EXPOSE_CODE !== 'false';
+const AUTH_CODE_TTL_MS = 10 * 60 * 1000;
+const pendingLoginCodes = new Map();
 
 let kv = null;
 
@@ -255,33 +260,155 @@ const seededReviews = [
   }
 ];
 
+function normalizeEmail(rawEmail) {
+  return String(rawEmail || '').trim().toLowerCase();
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function buildUserIdFromEmail(email) {
+  const hash = crypto.createHash('sha256').update(email).digest('hex');
+  return `user-${hash.slice(0, 12)}`;
+}
+
+function signPayload(payloadBase64) {
+  return crypto.createHmac('sha256', authSecret).update(payloadBase64).digest('base64url');
+}
+
+function buildAuthToken(email) {
+  const payload = {
+    email,
+    userId: buildUserIdFromEmail(email),
+    iat: Date.now()
+  };
+
+  const payloadBase64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = signPayload(payloadBase64);
+  return `gs-auth.${payloadBase64}.${signature}`;
+}
+
+function parseAuthToken(token) {
+  if (!token || !token.startsWith('gs-auth.')) {
+    return null;
+  }
+
+  const tokenBody = token.replace('gs-auth.', '');
+  const parts = tokenBody.split('.');
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const [payloadBase64, signature] = parts;
+  const expectedSignature = signPayload(payloadBase64);
+  if (signature !== expectedSignature) {
+    return null;
+  }
+
+  try {
+    const payloadJson = Buffer.from(payloadBase64, 'base64url').toString('utf8');
+    const payload = JSON.parse(payloadJson);
+    if (!payload?.email || !payload?.userId) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function cleanupExpiredCodes() {
+  const now = Date.now();
+  for (const [email, entry] of pendingLoginCodes.entries()) {
+    if (entry.expiresAt <= now) {
+      pendingLoginCodes.delete(email);
+    }
+  }
+}
+
+function issueLoginCode(email) {
+  cleanupExpiredCodes();
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  pendingLoginCodes.set(email, {
+    code,
+    expiresAt: Date.now() + AUTH_CODE_TTL_MS,
+    attempts: 0
+  });
+  return code;
+}
+
+app.post('/api/auth/request-code', (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'Valid email required' });
+  }
+
+  const code = issueLoginCode(email);
+  console.info(`[auth] Login code for ${email}: ${code}`);
+
+  const response = {
+    ok: true,
+    expiresInSeconds: Math.floor(AUTH_CODE_TTL_MS / 1000)
+  };
+
+  if (exposeAuthCode) {
+    response.devCode = code;
+  }
+
+  return res.json(response);
+});
+
+app.post('/api/auth/verify-code', (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  const code = String(req.body?.code || '').trim();
+
+  if (!isValidEmail(email) || code.length !== 6) {
+    return res.status(400).json({ error: 'Valid email and 6-digit code required' });
+  }
+
+  cleanupExpiredCodes();
+  const entry = pendingLoginCodes.get(email);
+  if (!entry) {
+    return res.status(400).json({ error: 'Code expired or not requested' });
+  }
+
+  if (entry.attempts >= 5) {
+    pendingLoginCodes.delete(email);
+    return res.status(429).json({ error: 'Too many attempts. Request a new code.' });
+  }
+
+  if (entry.code !== code) {
+    entry.attempts += 1;
+    return res.status(400).json({ error: 'Invalid code' });
+  }
+
+  pendingLoginCodes.delete(email);
+  const token = buildAuthToken(email);
+  return res.json({ token, email, userId: buildUserIdFromEmail(email) });
+});
+
+// Backward-compatible endpoint for existing tests and clients.
 app.post('/api/auth/login', (req, res) => {
-  const { email } = req.body || {};
-  if (!email) return res.status(400).json({ error: 'Email required' });
-  const token = `mock-token.${Buffer.from(email).toString('base64url')}`;
-  return res.json({ token, email });
+  const email = normalizeEmail(req.body?.email);
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'Valid email required' });
+  }
+  const token = buildAuthToken(email);
+  return res.json({ token, email, userId: buildUserIdFromEmail(email) });
 });
 
 function getSession(req) {
   const auth = req.headers['authorization'];
   if (!auth || !auth.startsWith('Bearer ')) return null;
   const token = auth.replace('Bearer ', '');
-  if (!token.startsWith('mock-token.')) return null;
-
-  try {
-    const encodedEmail = token.replace('mock-token.', '');
-    const email = Buffer.from(encodedEmail, 'base64url').toString('utf8');
-    if (!email) return null;
-    return { email };
-  } catch {
-    return null;
-  }
+  return parseAuthToken(token);
 }
 
 app.get('/api/me', (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
-  return res.json({ email: session.email });
+  return res.json({ email: session.email, userId: session.userId });
 });
 
 app.get('/api/bookings', async (req, res) => {
@@ -294,8 +421,8 @@ app.get('/api/bookings', async (req, res) => {
 app.post('/api/bookings', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
-  const { productId, name, email, paymentMethod, cardLast4 } = req.body || {};
-  if (!productId || !name || !email) return res.status(400).json({ error: 'Missing fields' });
+  const { productId, name, paymentMethod, cardLast4 } = req.body || {};
+  if (!productId || !name) return res.status(400).json({ error: 'Missing fields' });
   const product = getProductById(productId);
   if (!product) return res.status(404).json({ error: 'Product not found' });
   const id = `bkg-${Date.now()}`;
@@ -305,7 +432,8 @@ app.post('/api/bookings', async (req, res) => {
     productId,
     product,
     name,
-    email,
+    email: session.email,
+    renterUserId: session.userId,
     bookingStatus: 'confirmed',
     paymentStatus: 'paid',
     refundStatus: 'not_requested',

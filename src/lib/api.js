@@ -74,6 +74,31 @@ export async function login(email) {
   return json;
 }
 
+export async function requestLoginCode(email) {
+  const url = buildUrl('/api/auth/request-code');
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email })
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json?.error || 'Koodin lähetys epäonnistui');
+  return json;
+}
+
+export async function verifyLoginCode(email, code) {
+  const url = buildUrl('/api/auth/verify-code');
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, code })
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json?.error || 'Koodin vahvistus epäonnistui');
+  await AsyncStorage.setItem('token', json.token);
+  return json;
+}
+
 export async function getProfile() {
   return fetchJson('/api/me');
 }
