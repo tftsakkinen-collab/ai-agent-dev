@@ -10,6 +10,8 @@
 - Start narrow with a SUP-first pilot and keep data model category-agnostic.
 - Optimize for trust and reliability before feature breadth.
 - Treat trust and safety as core product, not a later add-on.
+- Pilot v1 scope lock: Oulu area + SUP boards only.
+- Expansion to e-bikes and other categories starts only after Oulu SUP pilot success criteria are met.
 
 ## Priority Order
 1. Production stability and QA baseline.
@@ -132,8 +134,8 @@
 - Validate demand, operations, and trust flow in one constrained market.
 
 ### Pilot Scope
-- One city/area.
-- SUP category first.
+- Oulu area only.
+- SUP category only.
 - Limited inventory and invited testers.
 
 ### Metrics

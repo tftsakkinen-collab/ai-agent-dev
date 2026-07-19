@@ -90,88 +90,75 @@ app.use((req, res, next) => {
 const providers = [
   {
     id: 'provider-1',
-    name: 'Gearspot Vuokraus',
-    description: 'Luotettava varusteyritys, joka tarjoaa SUP-lautoja, pyöriä ja hiihtovarusteita.'
+    name: 'Gearspot Oulu SUP Pilot',
+    description: 'Pilottivuokraamo Oulun alueelle: SUP-laudat turvallisella noudolla ja palautuksella.'
+  },
+  {
+    id: 'provider-2',
+    name: 'Nallikari Paddle Club',
+    description: 'Paikallisten vuokraajien SUP-kalusto Nallikarissa ja Oulujoen varressa.'
   }
 ];
 
 const products = [
   {
-    id: 'ebike-1',
-    type: 'electric_bike',
-    name: 'Gearspot Sähköpyörä — City 1',
-    short: 'Sähköavusteinen kaupunkipyörä, matka-alue ~60 km.',
-    price: '15 €/tunti · 60 €/päivä',
-    providerId: 'provider-1',
-    searchTerms: ['sähköpyörä', 'pyörä', 'bike', 'ebike']
-  },
-  {
     id: 'sup-1',
     type: 'sup_board',
-    name: 'Gearspot SUP — Inflatable 10\'6"',
-    short: 'Helppo inflatettava SUP, mela ja pelastusliivi sisältyy.',
-    price: '12 €/tunti · 40 €/päivä',
+    name: 'Oulu SUP — Inflatable 10\'6"',
+    short: 'Helppo all-around SUP Oulun kesään, mela ja liivi mukana.',
+    price: '15 €/tunti · 60 €/päivä',
     providerId: 'provider-1',
-    searchTerms: ['sup', 'lauta', 'stand up paddle', 'aina']
+    searchTerms: ['sup', 'lauta', 'oulu', 'nallikari', 'stand up paddle']
   },
   {
-    id: 'ski-1',
-    type: 'ski_gear',
-    name: 'Gearspot Hiihtovarusteet',
-    short: 'Täydellinen laskettelupaketti suksineen, monot mukana.',
-    price: '20 €/tunti · 80 €/päivä',
-    providerId: 'provider-1',
-    searchTerms: ['hiihto', 'laskettelu', 'ski', 'monot']
+    id: 'sup-2',
+    type: 'sup_board',
+    name: 'Nallikari Touring SUP 11\'2"',
+    short: 'Vakaa touring-lauta pidemmille Oulun rantareiteille.',
+    price: '18 €/tunti · 65 €/päivä',
+    providerId: 'provider-2',
+    searchTerms: ['sup', 'lauta', 'oulu', 'tuppisaari', 'touring']
+  },
+  {
+    id: 'sup-3',
+    type: 'sup_board',
+    name: 'Hietasaari SUP — Beginner Set',
+    short: 'Aloittelijapaketti, kevyt lauta ja helppo kantaa rannalle.',
+    price: '12 €/tunti · 45 €/päivä',
+    providerId: 'provider-2',
+    searchTerms: ['sup', 'aloittelija', 'oulu', 'hietasaari', 'lauta']
   }
 ];
 
 const locations = [
   {
-    id: 'lake-1',
-    name: 'Tuusulanjärvi',
+    id: 'oulu-1',
+    name: 'Nallikari',
     category: 'Lake',
-    place: 'Tuusula',
-    query: 'Tuusulanjärvi',
-    products: ['sup-1', 'ebike-1']
+    place: 'Oulu',
+    query: 'Nallikari Oulu',
+    products: ['sup-1', 'sup-2']
   },
   {
-    id: 'lake-2',
-    name: 'Vesijärvi',
+    id: 'oulu-2',
+    name: 'Hietasaari',
     category: 'Lake',
-    place: 'Lahti',
-    query: 'Vesijärvi',
-    products: ['sup-1']
+    place: 'Oulu',
+    query: 'Hietasaari Oulu',
+    products: ['sup-3', 'sup-1']
   },
   {
-    id: 'lake-3',
-    name: 'Päijänne',
-    category: 'Lake',
-    place: 'Asikkala',
-    query: 'Päijänne',
-    products: ['sup-1', 'ebike-1']
-  },
-  {
-    id: 'ski-1',
-    name: 'Levi ski resort',
-    category: 'Ski resort',
-    place: 'Levi',
-    query: 'Levi ski resort',
-    products: ['ski-1']
-  },
-  {
-    id: 'bike-1',
-    name: 'Helsinki Baana route',
-    category: 'Bike route',
-    place: 'Helsinki',
-    query: 'Helsinki Baana',
-    products: ['ebike-1']
+    id: 'oulu-3',
+    name: 'Tuiran ranta / Oulujoki',
+    category: 'River',
+    place: 'Oulu',
+    query: 'Tuiran ranta Oulu',
+    products: ['sup-2', 'sup-3']
   }
 ];
 
 const categories = [
-  { id: 'watersports', title: 'Vesillä', label: 'SUP ja melonta', query: 'sup' },
-  { id: 'city', title: 'Kaupunki', label: 'Sähköpyörät ja retkipyörät', query: 'ebike' },
-  { id: 'winter', title: 'Talvi', label: 'Hiihto ja laskettelu', query: 'ski' }
+  { id: 'oulu-sup', title: 'Oulu SUP Pilot', label: 'SUP-laudat Oulun alueella', query: 'oulu sup' }
 ];
 
 // Simple in-memory bookings store

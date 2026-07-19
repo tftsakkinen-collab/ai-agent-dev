@@ -507,3 +507,17 @@ test('auth provider status and pilot metrics endpoints return admin data', async
   expect(metrics.metrics).toBeTruthy();
   expect(typeof metrics.metrics.bookingCompletionRatePct).toBe('number');
 });
+
+test('pilot catalog is restricted to Oulu SUP inventory', async () => {
+  const productsRes = await fetch('http://localhost:3000/api/products');
+  expect(productsRes.status).toBe(200);
+  const products = await productsRes.json();
+  expect(products.length).toBeGreaterThan(0);
+  expect(products.every((product) => product.type === 'sup_board')).toBeTruthy();
+
+  const locationsRes = await fetch('http://localhost:3000/api/locations?q=oulu');
+  expect(locationsRes.status).toBe(200);
+  const locations = await locationsRes.json();
+  expect(locations.length).toBeGreaterThan(0);
+  expect(locations.every((location) => location.place === 'Oulu')).toBeTruthy();
+});

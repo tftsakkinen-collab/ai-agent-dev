@@ -41,13 +41,13 @@ export default function MapSearchScreen({ route }) {
     <SafeAreaView style={styles.safe}>      
       <ScreenHeader
         title="Etsi paikka"
-        subtitle="Hae vuokrauspaikkoja ja löydä sopiva sijainti"
+        subtitle="Hae Oulun SUP-paikkoja ja valitse sopivin noutopiste"
       />
       <View style={styles.container}>
         <View style={styles.searchRow}>
           <TextInput
             style={styles.input}
-            placeholder="Kirjoita järven, hiihtokeskuksen tai pyöräreitin nimi"
+            placeholder="Kirjoita esim. Nallikari tai Hietasaari"
             value={search}
             onChangeText={setSearch}
             returnKeyType="search"

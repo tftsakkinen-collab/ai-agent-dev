@@ -5,21 +5,19 @@ import ProductList from '../components/ProductList';
 import { fetchJson } from '../lib/api';
 
 const quickSearchItems = [
-  { label: 'SUP-lauta', query: 'sup' },
-  { label: 'Sähköpyörä', query: 'ebike' },
-  { label: 'Hiihtovarusteet', query: 'ski' }
+  { label: 'SUP-laudat Oulussa', query: 'oulu sup' },
+  { label: 'Aloittelijalle', query: 'aloittelija sup oulu' },
+  { label: 'Touring-laudat', query: 'touring sup oulu' }
 ];
 
 const quickLocationItems = [
-  { label: 'Tuusula', query: 'Tuusulanjärvi' },
-  { label: 'Levi', query: 'Levi ski resort' },
-  { label: 'Helsinki', query: 'Helsinki Baana' }
+  { label: 'Nallikari', query: 'Nallikari Oulu' },
+  { label: 'Hietasaari', query: 'Hietasaari Oulu' },
+  { label: 'Tuiran ranta', query: 'Tuiran ranta Oulu' }
 ];
 
 const categoryCards = [
-  { title: 'Vesillä', label: 'SUP ja melonta', query: 'sup' },
-  { title: 'Kaupunki', label: 'Sähköpyörät ja retkipyörät', query: 'ebike' },
-  { title: 'Talvi', label: 'Hiihto ja laskettelu', query: 'ski' }
+  { title: 'Oulu SUP Pilot', label: 'Vuokraa SUP-lauta paikalliselta', query: 'oulu sup' }
 ];
 
 export default function HomeScreen({ navigation }) {
@@ -46,17 +44,17 @@ export default function HomeScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.container}>
         <ScreenHeader
           title={null}
-          subtitle="Löydä ja varaa varusteet läheltäsi"
+          subtitle="SUP-lautojen vertaisvuokraus Oulun alueella"
           actionLabel="Profiili"
           onAction={() => navigation.navigate('Profile')}
         />
 
         <View style={styles.heroCard}>
-          <Text style={styles.heroText}>Selaa ja varaa lähelläsi olevia vuokrauskohteita nopeasti yhdellä haulla.</Text>
+          <Text style={styles.heroText}>Kesän pilotti on rajattu Ouluun: löydä SUP-lauta paikalliselta vuokraajalta ja varaa helposti.</Text>
           <View style={styles.searchContainer}>
             <TextInput
               style={styles.searchInput}
-              placeholder="Hae SUP, pyörä tai hiihto"
+              placeholder="Hae Oulun SUP-lautoja"
               value={searchText}
               onChangeText={setSearchText}
               returnKeyType="search"
@@ -110,7 +108,7 @@ export default function HomeScreen({ navigation }) {
           ))}
         </View>
 
-        <Text style={styles.sectionTitle}>Suositut varusteet</Text>
+        <Text style={styles.sectionTitle}>Suositut SUP-laudat Oulussa</Text>
         <ProductList products={products} navigation={navigation} />
       </ScrollView>
     </SafeAreaView>
