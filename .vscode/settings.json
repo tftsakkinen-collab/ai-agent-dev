@@ -6,6 +6,7 @@
             "matchCommandLine": true
         },
         "git init": true,
-        "git config": true
+        "git config": true,
+        "./prepare_release.sh": true
     }
 }

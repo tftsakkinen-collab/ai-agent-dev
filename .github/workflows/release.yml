@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Validate required release secrets
+        env:
+          EAS_TOKEN: ${{ secrets.EAS_TOKEN }}
+          ANDROID_KEYSTORE_JSON: ${{ secrets.ANDROID_KEYSTORE_JSON }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          APPLE_CREDENTIALS: ${{ secrets.APPLE_CREDENTIALS }}
+        run: |
+          missing=()
+
+          [[ -z "${EAS_TOKEN:-}" ]] && missing+=("EAS_TOKEN")
+          [[ -z "${ANDROID_KEYSTORE_JSON:-}" ]] && missing+=("ANDROID_KEYSTORE_JSON")
+          [[ -z "${ANDROID_KEYSTORE_PASSWORD:-}" ]] && missing+=("ANDROID_KEYSTORE_PASSWORD")
+          [[ -z "${ANDROID_KEY_ALIAS:-}" ]] && missing+=("ANDROID_KEY_ALIAS")
+          [[ -z "${ANDROID_KEY_PASSWORD:-}" ]] && missing+=("ANDROID_KEY_PASSWORD")
+          [[ -z "${APPLE_CREDENTIALS:-}" ]] && missing+=("APPLE_CREDENTIALS")
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing required repository secrets: ${missing[*]}"
+            exit 1
+          fi
+
+          echo "Required secrets are configured."
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run release gate
+        env:
+          EAS_TOKEN: ${{ secrets.EAS_TOKEN }}
+        run: npm run release:gate
+
+      - name: Run release helper
+        env:
+          EAS_TOKEN: ${{ secrets.EAS_TOKEN }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          chmod +x ./prepare_release.sh
+          ./prepare_release.sh

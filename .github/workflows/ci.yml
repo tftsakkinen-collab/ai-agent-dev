@@ -16,12 +16,12 @@ jobs:
         with:
           node-version: 18
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       - name: Run lint
         run: npm run lint
       - name: Run tests
         run: npm test
       - name: Run Playwright E2E checks
-        run: npx playwright test || echo "Playwright tests failed or not configured"
+        run: npm run test:e2e
       - name: Build web (Expo)
         run: npm run web --silent || echo "web build skipped in CI"
