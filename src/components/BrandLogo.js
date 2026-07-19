@@ -1,24 +1,32 @@
 import React from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
-const logoIconImage = require('../assets/logo.jpg');
-const logoTextImage = require('../assets/logo_tekstilla.jpg');
+const logoIconImage = require('../assets/poistettu_tausta.png');
 
 export default function BrandLogo({ size = 48, showText = true, showTagline = false }) {
   const [imageFailed, setImageFailed] = React.useState(false);
   const logoHeight = size;
-  const logoWidth = showText ? Math.round(size * 2.8) : size;
-  const source = showText ? logoTextImage : logoIconImage;
+  const logoWidth = size;
 
   if (!imageFailed) {
     return (
       <View style={styles.wrapper}>
         <Image
-          source={source}
+          source={logoIconImage}
           style={{ width: logoWidth, height: logoHeight }}
           resizeMode="contain"
           onError={() => setImageFailed(true)}
         />
+        {showText ? (
+          <View style={styles.textWrapper}>
+            <Text style={styles.text}>
+              <Text style={styles.textStrong}>Gear</Text>
+              <Text>Spot</Text>
+              <Text style={styles.dot}>.</Text>
+            </Text>
+            {showTagline ? <Text style={styles.tagline}>Vuokkaa lahellasi</Text> : null}
+          </View>
+        ) : null}
       </View>
     );
   }
