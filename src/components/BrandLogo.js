@@ -1,7 +1,28 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
+
+const logoIconImage = require('../assets/logo.jpg');
+const logoTextImage = require('../assets/logo_tekstilla.jpg');
 
 export default function BrandLogo({ size = 48, showText = true, showTagline = false }) {
+  const [imageFailed, setImageFailed] = React.useState(false);
+  const logoHeight = size;
+  const logoWidth = showText ? Math.round(size * 2.8) : size;
+  const source = showText ? logoTextImage : logoIconImage;
+
+  if (!imageFailed) {
+    return (
+      <View style={styles.wrapper}>
+        <Image
+          source={source}
+          style={{ width: logoWidth, height: logoHeight }}
+          resizeMode="contain"
+          onError={() => setImageFailed(true)}
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.wrapper}>
       <View style={[styles.iconCircle, { width: size, height: size, borderRadius: size / 2 }]}> 
