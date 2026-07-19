@@ -153,3 +153,249 @@ test('feedback report can be submitted without auth', async () => {
   expect(feedbackUpdateJson.status).toBe('in_progress');
   expect(feedbackUpdateJson.priority).toBe('high');
 });
+
+test('booking lifecycle transitions and deposit evidence flow work', async () => {
+  const loginRes = await fetch('http://localhost:3000/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'lifecycle@example.com' })
+  });
+  expect(loginRes.status).toBe(200);
+  const loginJson = await loginRes.json();
+
+  const products = await fetch('http://localhost:3000/api/products').then((r) => r.json());
+  const productId = products[0].id;
+
+  const bookingRes = await fetch('http://localhost:3000/api/bookings', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      productId,
+      name: 'Lifecycle Tester',
+      paymentMethod: 'visa',
+      cardLast4: '4242'
+    })
+  });
+  expect(bookingRes.status).toBe(200);
+  const booking = await bookingRes.json();
+  expect(booking.bookingStage).toBe('approved');
+
+  const setupHandoffRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/handoff/setup`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ handoffMethod: 'lockbox_code', handoffCode: '1234' })
+  });
+  expect(setupHandoffRes.status).toBe(200);
+  const handoffSetup = await setupHandoffRes.json();
+  expect(handoffSetup.bookingStage).toBe('awaiting_handoff');
+  expect(handoffSetup.handoffCode).toBe(null);
+
+  const renterConfirmRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/handoff/confirm`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ actor: 'renter' })
+  });
+  expect(renterConfirmRes.status).toBe(200);
+
+  const ownerConfirmRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/handoff/confirm`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ actor: 'owner' })
+  });
+  expect(ownerConfirmRes.status).toBe(200);
+  const inUseBooking = await ownerConfirmRes.json();
+  expect(inUseBooking.bookingStage).toBe('in_use');
+  expect(inUseBooking.handoffCode).toBe('1234');
+
+  const depositSetupRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/deposit/setup`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ depositAmount: 120 })
+  });
+  expect(depositSetupRes.status).toBe(200);
+  const depositSetup = await depositSetupRes.json();
+  expect(depositSetup.depositStatus).toBe('held');
+  expect(depositSetup.depositAmount).toBe(120);
+
+  const evidenceBeforeRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/evidence`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ phase: 'before', photos: ['https://img.test/before-1.jpg'] })
+  });
+  expect(evidenceBeforeRes.status).toBe(200);
+  const beforeEvidenceBooking = await evidenceBeforeRes.json();
+  expect(beforeEvidenceBooking.evidencePhotosBefore.length).toBeGreaterThan(0);
+
+  const returnRequestRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/return/request`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({})
+  });
+  expect(returnRequestRes.status).toBe(200);
+
+  const returnConfirmRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/return/confirm`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({})
+  });
+  expect(returnConfirmRes.status).toBe(200);
+
+  const evidenceAfterRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/evidence`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ phase: 'after', photos: ['https://img.test/after-1.jpg'] })
+  });
+  expect(evidenceAfterRes.status).toBe(200);
+  const afterEvidenceBooking = await evidenceAfterRes.json();
+  expect(afterEvidenceBooking.evidencePhotosAfter.length).toBeGreaterThan(0);
+
+  const depositReleaseRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/deposit/release`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({})
+  });
+  expect(depositReleaseRes.status).toBe(200);
+  const releasedBooking = await depositReleaseRes.json();
+  expect(releasedBooking.depositStatus).toBe('released');
+
+  const completeRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/complete`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({})
+  });
+  expect(completeRes.status).toBe(200);
+  const completedBooking = await completeRes.json();
+  expect(completedBooking.bookingStage).toBe('completed');
+  expect(completedBooking.bookingStatus).toBe('completed');
+});
+
+test('double-blind booking reviews stay hidden until both are submitted', async () => {
+  const loginRes = await fetch('http://localhost:3000/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'blind-review@example.com' })
+  });
+  expect(loginRes.status).toBe(200);
+  const loginJson = await loginRes.json();
+
+  const products = await fetch('http://localhost:3000/api/products').then((r) => r.json());
+  const productId = products[0].id;
+
+  const bookingRes = await fetch('http://localhost:3000/api/bookings', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      productId,
+      name: 'Blind Review Tester',
+      paymentMethod: 'visa',
+      cardLast4: '4242'
+    })
+  });
+  expect(bookingRes.status).toBe(200);
+  const booking = await bookingRes.json();
+
+  // Fast-path this booking to completed stage.
+  await fetch(`http://localhost:3000/api/bookings/${booking.id}/handoff/setup`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${loginJson.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ handoffMethod: 'in_person' })
+  });
+  await fetch(`http://localhost:3000/api/bookings/${booking.id}/handoff/confirm`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${loginJson.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ actor: 'owner' })
+  });
+  await fetch(`http://localhost:3000/api/bookings/${booking.id}/handoff/confirm`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${loginJson.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ actor: 'renter' })
+  });
+  await fetch(`http://localhost:3000/api/bookings/${booking.id}/return/request`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${loginJson.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  await fetch(`http://localhost:3000/api/bookings/${booking.id}/return/confirm`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${loginJson.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  const completeRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/complete`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${loginJson.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  expect(completeRes.status).toBe(200);
+
+  const renterReviewRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/reviews`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ actor: 'renter', rating: 5, comment: 'Great handoff and clean gear.' })
+  });
+  expect(renterReviewRes.status).toBe(201);
+
+  const hiddenReadRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/reviews`, {
+    headers: { Authorization: `Bearer ${loginJson.token}` }
+  });
+  expect(hiddenReadRes.status).toBe(200);
+  const hiddenRead = await hiddenReadRes.json();
+  expect(hiddenRead.visibility).toBe('hidden');
+  expect(hiddenRead.reviews.length).toBe(0);
+
+  const ownerReviewRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/reviews`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ actor: 'owner', rating: 4, comment: 'Returned on time.' })
+  });
+  expect(ownerReviewRes.status).toBe(201);
+
+  const visibleReadRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/reviews`, {
+    headers: { Authorization: `Bearer ${loginJson.token}` }
+  });
+  expect(visibleReadRes.status).toBe(200);
+  const visibleRead = await visibleReadRes.json();
+  expect(visibleRead.visibility).toBe('visible');
+  expect(visibleRead.reviews.length).toBe(2);
+});

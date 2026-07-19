@@ -35,6 +35,9 @@ const BOOKING_STAGE = {
 };
 
 const ALLOWED_HANDOFF_METHODS = ['lockbox_code', 'in_person'];
+const ALLOWED_DEPOSIT_STATUS = ['not_required', 'held', 'released', 'claimed'];
+const ALLOWED_REVIEW_ACTORS = ['owner', 'renter'];
+const REVIEW_REVEAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 app.use(cors());
 app.use(express.json());
@@ -148,7 +151,11 @@ async function readStoreList(key, memoryFallback) {
   }
 
   const value = await kv.get(key);
-  return Array.isArray(value) ? value : [];
+  if (Array.isArray(value) && value.length > 0) {
+    return value;
+  }
+
+  return memoryFallback;
 }
 
 async function writeStoreList(key, items) {
@@ -182,9 +189,10 @@ async function readFeedbackReports() {
 }
 
 async function saveFeedbackReports(items) {
+  const snapshot = Array.isArray(items) ? [...items] : [];
   feedbackReports.length = 0;
-  feedbackReports.push(...items);
-  await writeStoreList(STORE_KEYS.feedbackReports, items);
+  feedbackReports.push(...snapshot);
+  await writeStoreList(STORE_KEYS.feedbackReports, snapshot);
 }
 
 async function getBookingById(id) {
@@ -214,6 +222,31 @@ function transitionBookingStage(booking, nextStage) {
   booking.bookingStage = nextStage;
   booking.bookingStageUpdatedAt = new Date().toISOString();
   return { ok: true };
+}
+
+function updateBookingReviewVisibility(booking) {
+  if (!booking.reviewFlow) {
+    return;
+  }
+
+  const ownerSubmitted = Boolean(booking.reviewFlow.ownerReview);
+  const renterSubmitted = Boolean(booking.reviewFlow.renterReview);
+  const windowExpired = booking.reviewFlow.reviewWindowEndsAt
+    ? new Date(booking.reviewFlow.reviewWindowEndsAt).getTime() <= Date.now()
+    : false;
+
+  booking.reviewFlow.visibility = ownerSubmitted && renterSubmitted ? 'visible' : windowExpired ? 'visible' : 'hidden';
+}
+
+function getSafeBookingView(booking) {
+  const copy = { ...booking };
+
+  if (copy.handoffMethod === 'lockbox_code') {
+    const revealAllowed = copy.bookingStage === BOOKING_STAGE.IN_USE || copy.bookingStage === BOOKING_STAGE.AWAITING_RETURN || copy.bookingStage === BOOKING_STAGE.RETURNED || copy.bookingStage === BOOKING_STAGE.COMPLETED;
+    copy.handoffCode = revealAllowed ? copy.handoffCode : null;
+  }
+
+  return copy;
 }
 
 function getProductById(id) {
@@ -451,7 +484,7 @@ app.get('/api/bookings', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
   const allBookings = await readBookings();
-  res.json(allBookings.filter((booking) => booking.email === session.email));
+  res.json(allBookings.filter((booking) => booking.email === session.email).map(getSafeBookingView));
 });
 
 app.post('/api/bookings', async (req, res) => {
@@ -474,6 +507,12 @@ app.post('/api/bookings', async (req, res) => {
     bookingStage: BOOKING_STAGE.APPROVED,
     paymentStatus: 'paid',
     refundStatus: 'not_requested',
+    depositAmount: 0,
+    depositStatus: 'not_required',
+    depositClaimedAmount: 0,
+    depositClaimReason: null,
+    evidencePhotosBefore: [],
+    evidencePhotosAfter: [],
     paymentMethod: paymentMethod || 'mock_card',
     paymentSummary: safeLast4 ? `Mock ${paymentMethod || 'card'} ending ${safeLast4}` : 'Mock card payment approved',
     handoffMethod: 'in_person',
@@ -484,13 +523,21 @@ app.post('/api/bookings', async (req, res) => {
     returnedAt: null,
     completedAt: null,
     disputedAt: null,
+    reviewFlow: {
+      visibility: 'hidden',
+      reviewWindowEndsAt: null,
+      ownerReview: null,
+      renterReview: null,
+      ownerReviewSubmittedAt: null,
+      renterReviewSubmittedAt: null
+    },
     createdAt: new Date().toISOString()
   };
   booking.paidAt = booking.createdAt;
   const allBookings = await readBookings();
   allBookings.push(booking);
   await saveBookings(allBookings);
-  res.json(booking);
+  res.json(getSafeBookingView(booking));
 });
 
 app.post('/api/bookings/:id/refund', async (req, res) => {
@@ -544,7 +591,7 @@ app.post('/api/bookings/:id/handoff/setup', async (req, res) => {
   booking.handoffConfiguredAt = new Date().toISOString();
   await saveBookings(allBookings);
 
-  return res.json(booking);
+  return res.json(getSafeBookingView(booking));
 });
 
 app.post('/api/bookings/:id/handoff/confirm', async (req, res) => {
@@ -579,7 +626,7 @@ app.post('/api/bookings/:id/handoff/confirm', async (req, res) => {
   }
 
   await saveBookings(allBookings);
-  return res.json(booking);
+  return res.json(getSafeBookingView(booking));
 });
 
 app.post('/api/bookings/:id/return/request', async (req, res) => {
@@ -599,7 +646,7 @@ app.post('/api/bookings/:id/return/request', async (req, res) => {
 
   booking.returnRequestedAt = new Date().toISOString();
   await saveBookings(allBookings);
-  return res.json(booking);
+  return res.json(getSafeBookingView(booking));
 });
 
 app.post('/api/bookings/:id/return/confirm', async (req, res) => {
@@ -619,7 +666,7 @@ app.post('/api/bookings/:id/return/confirm', async (req, res) => {
 
   booking.returnedAt = new Date().toISOString();
   await saveBookings(allBookings);
-  return res.json(booking);
+  return res.json(getSafeBookingView(booking));
 });
 
 app.post('/api/bookings/:id/complete', async (req, res) => {
@@ -639,8 +686,10 @@ app.post('/api/bookings/:id/complete', async (req, res) => {
 
   booking.completedAt = new Date().toISOString();
   booking.bookingStatus = 'completed';
+  booking.reviewFlow.reviewWindowEndsAt = new Date(Date.now() + REVIEW_REVEAL_WINDOW_MS).toISOString();
+  updateBookingReviewVisibility(booking);
   await saveBookings(allBookings);
-  return res.json(booking);
+  return res.json(getSafeBookingView(booking));
 });
 
 app.post('/api/bookings/:id/dispute', async (req, res) => {
@@ -667,7 +716,239 @@ app.post('/api/bookings/:id/dispute', async (req, res) => {
   booking.disputedAt = new Date().toISOString();
   booking.disputeReason = String(req.body?.reason || 'unspecified').slice(0, 300);
   await saveBookings(allBookings);
-  return res.json(booking);
+  return res.json(getSafeBookingView(booking));
+});
+
+app.post('/api/bookings/:id/deposit/setup', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  const depositAmount = Number(req.body?.depositAmount || 0);
+  if (Number.isNaN(depositAmount) || depositAmount < 0) {
+    return res.status(400).json({ error: 'depositAmount must be a non-negative number' });
+  }
+
+  booking.depositAmount = depositAmount;
+  booking.depositStatus = depositAmount > 0 ? 'held' : 'not_required';
+  booking.depositHeldAt = depositAmount > 0 ? new Date().toISOString() : null;
+  booking.depositReleasedAt = null;
+  booking.depositClaimedAt = null;
+  booking.depositClaimedAmount = 0;
+  booking.depositClaimReason = null;
+
+  await saveBookings(allBookings);
+  return res.json(getSafeBookingView(booking));
+});
+
+app.post('/api/bookings/:id/deposit/release', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  if (!ALLOWED_DEPOSIT_STATUS.includes(booking.depositStatus)) {
+    return res.status(400).json({ error: 'Invalid deposit status' });
+  }
+
+  if (booking.depositStatus !== 'held') {
+    return res.status(400).json({ error: 'Deposit can only be released from held status' });
+  }
+
+  booking.depositStatus = 'released';
+  booking.depositReleasedAt = new Date().toISOString();
+  await saveBookings(allBookings);
+  return res.json(getSafeBookingView(booking));
+});
+
+app.post('/api/bookings/:id/deposit/claim', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  if (!ALLOWED_DEPOSIT_STATUS.includes(booking.depositStatus)) {
+    return res.status(400).json({ error: 'Invalid deposit status' });
+  }
+
+  if (booking.depositStatus !== 'held') {
+    return res.status(400).json({ error: 'Deposit can only be claimed from held status' });
+  }
+
+  const requestedAmount = Number(req.body?.amount || booking.depositAmount || 0);
+  if (Number.isNaN(requestedAmount) || requestedAmount < 0) {
+    return res.status(400).json({ error: 'amount must be a non-negative number' });
+  }
+
+  booking.depositStatus = 'claimed';
+  booking.depositClaimedAmount = Math.min(requestedAmount, booking.depositAmount || 0);
+  booking.depositClaimReason = String(req.body?.reason || 'damage_reported').slice(0, 300);
+  booking.depositClaimedAt = new Date().toISOString();
+
+  await saveBookings(allBookings);
+  return res.json(getSafeBookingView(booking));
+});
+
+app.post('/api/bookings/:id/evidence', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  const phase = String(req.body?.phase || '').trim();
+  const rawPhotos = Array.isArray(req.body?.photos) ? req.body.photos : [];
+  if (!['before', 'after'].includes(phase)) {
+    return res.status(400).json({ error: 'phase must be before or after' });
+  }
+  if (!rawPhotos.length) {
+    return res.status(400).json({ error: 'At least one photo is required' });
+  }
+
+  const photos = rawPhotos
+    .map((photo) => String(photo || '').trim())
+    .filter(Boolean)
+    .slice(0, 10)
+    .map((url) => ({ url, uploadedAt: new Date().toISOString(), uploadedBy: session.email }));
+
+  if (!photos.length) {
+    return res.status(400).json({ error: 'photos must contain valid URLs' });
+  }
+
+  if (phase === 'before') {
+    booking.evidencePhotosBefore = [...(booking.evidencePhotosBefore || []), ...photos];
+    booking.evidenceBeforeUpdatedAt = new Date().toISOString();
+  } else {
+    booking.evidencePhotosAfter = [...(booking.evidencePhotosAfter || []), ...photos];
+    booking.evidenceAfterUpdatedAt = new Date().toISOString();
+  }
+
+  await saveBookings(allBookings);
+  return res.json(getSafeBookingView(booking));
+});
+
+app.post('/api/bookings/:id/reviews', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  if (booking.bookingStage !== BOOKING_STAGE.COMPLETED) {
+    return res.status(400).json({ error: 'Reviews are allowed only for completed bookings' });
+  }
+
+  const actor = String(req.body?.actor || '').trim();
+  const rating = Number(req.body?.rating);
+  const comment = String(req.body?.comment || '').trim();
+
+  if (!ALLOWED_REVIEW_ACTORS.includes(actor)) {
+    return res.status(400).json({ error: 'actor must be owner or renter' });
+  }
+
+  if (Number.isNaN(rating) || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: 'rating must be between 1 and 5' });
+  }
+
+  if (!booking.reviewFlow) {
+    booking.reviewFlow = {
+      visibility: 'hidden',
+      reviewWindowEndsAt: new Date(Date.now() + REVIEW_REVEAL_WINDOW_MS).toISOString(),
+      ownerReview: null,
+      renterReview: null,
+      ownerReviewSubmittedAt: null,
+      renterReviewSubmittedAt: null
+    };
+  }
+
+  const reviewData = {
+    id: `booking-review-${Date.now()}`,
+    actor,
+    reviewer: session.email,
+    rating,
+    comment,
+    createdAt: new Date().toISOString()
+  };
+
+  if (actor === 'owner') {
+    booking.reviewFlow.ownerReview = reviewData;
+    booking.reviewFlow.ownerReviewSubmittedAt = reviewData.createdAt;
+  } else {
+    booking.reviewFlow.renterReview = reviewData;
+    booking.reviewFlow.renterReviewSubmittedAt = reviewData.createdAt;
+  }
+
+  updateBookingReviewVisibility(booking);
+  await saveBookings(allBookings);
+
+  return res.status(201).json({
+    bookingId: booking.id,
+    visibility: booking.reviewFlow.visibility,
+    ownerReviewSubmitted: Boolean(booking.reviewFlow.ownerReview),
+    renterReviewSubmitted: Boolean(booking.reviewFlow.renterReview)
+  });
+});
+
+app.get('/api/bookings/:id/reviews', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  if (!booking.reviewFlow) {
+    return res.json({
+      visibility: 'hidden',
+      reviewWindowEndsAt: null,
+      ownerReviewSubmitted: false,
+      renterReviewSubmitted: false,
+      reviews: []
+    });
+  }
+
+  updateBookingReviewVisibility(booking);
+  await saveBookings(allBookings);
+
+  if (booking.reviewFlow.visibility === 'hidden') {
+    return res.json({
+      visibility: 'hidden',
+      reviewWindowEndsAt: booking.reviewFlow.reviewWindowEndsAt,
+      ownerReviewSubmitted: Boolean(booking.reviewFlow.ownerReview),
+      renterReviewSubmitted: Boolean(booking.reviewFlow.renterReview),
+      reviews: []
+    });
+  }
+
+  const visibleReviews = [booking.reviewFlow.ownerReview, booking.reviewFlow.renterReview].filter(Boolean);
+  return res.json({
+    visibility: 'visible',
+    reviewWindowEndsAt: booking.reviewFlow.reviewWindowEndsAt,
+    ownerReviewSubmitted: Boolean(booking.reviewFlow.ownerReview),
+    renterReviewSubmitted: Boolean(booking.reviewFlow.renterReview),
+    reviews: visibleReviews
+  });
 });
 
 app.post('/api/feedback-reports', async (req, res) => {
