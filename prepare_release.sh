@@ -28,7 +28,8 @@ echo "5) Run Playwright E2E checks"
 npx playwright test || echo "Playwright tests failed or skipped"
 
 echo "6) Build web (expo)"
-npm run web --silent || echo "Expo web build skipped"
+# Use export commands in CI/release flows; `expo start --web` is a long-running dev server.
+npx expo export --platform web --clear || npx expo export:web || echo "Expo web build skipped"
 
 if [ -n "${EAS_TOKEN-}" ]; then
   echo "7) Trigger EAS Android build"
