@@ -20,6 +20,8 @@ import TermsScreen from './src/screens/TermsScreen';
 import MagicLinkAuthScreen from './src/screens/MagicLinkAuthScreen';
 import HandoffScreen from './src/screens/HandoffScreen';
 import DepositEvidenceScreen from './src/screens/DepositEvidenceScreen';
+import DisputeScreen from './src/screens/DisputeScreen';
+import ListingModerationScreen from './src/screens/ListingModerationScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -52,6 +54,8 @@ export default function App() {
           <Stack.Screen name="MapSearch" component={MapSearchScreen} />
           <Stack.Screen name="Handoff" component={HandoffScreen} />
           <Stack.Screen name="DepositEvidence" component={DepositEvidenceScreen} />
+          <Stack.Screen name="Dispute" component={DisputeScreen} />
+          <Stack.Screen name="ListingModeration" component={ListingModerationScreen} />
         </Stack.Navigator>
         <ReportIssueButton routeName={routeName} />
       </NavigationContainer>

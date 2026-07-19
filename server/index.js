@@ -1032,8 +1032,24 @@ app.post('/api/bookings/:id/dispute', async (req, res) => {
     }
   }
 
+  const { reason, description, evidencePhotos = [] } = req.body || {};
+  const dispute = {
+    id: `dispute-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    reason: String(reason || 'Unspecified').slice(0, 100),
+    description: String(description || '').slice(0, 1000),
+    evidencePhotos: Array.isArray(evidencePhotos) ? evidencePhotos.slice(0, 10) : [],
+    createdAt: new Date().toISOString(),
+    createdBy: session.email,
+    status: 'open'
+  };
+
+  if (!booking.disputes) {
+    booking.disputes = [];
+  }
+  booking.disputes.push(dispute);
+
   booking.disputedAt = new Date().toISOString();
-  booking.disputeReason = String(req.body?.reason || 'unspecified').slice(0, 300);
+  booking.disputeReason = reason || 'unspecified';
   booking.disputeResolutionStatus = 'open';
   booking.disputeResolutionNote = null;
   booking.disputeResolvedAt = null;
@@ -1983,6 +1999,21 @@ app.get('/api/bookings/:id/reviews', async (req, res) => {
   }
 
   return res.json(reviews);
+});
+
+app.get('/api/bookings/:id/disputes', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const booking = await getBookingById(req.params.id);
+  if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+  if (booking.email !== session.email && booking.renterUserId !== session.userId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const disputes = booking.disputes || [];
+  return res.json(disputes);
 });
 
 app.use((error, req, res, next) => {

@@ -310,3 +310,43 @@ export async function submitBookingEvidence(bookingId, phase, photos) {
     body: JSON.stringify({ phase, photos })
   });
 }
+
+export async function getBookingDisputes(bookingId) {
+  return fetchJson(`/api/bookings/${bookingId}/disputes`);
+}
+
+export async function submitBookingDispute(bookingId, { reason, description, evidencePhotos = [] }) {
+  return fetchJson(`/api/bookings/${bookingId}/dispute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason, description, evidencePhotos })
+  });
+}
+
+export async function getPendingListings() {
+  return fetchJson('/api/admin/listings?status=pending', {
+    headers: { 'x-admin-user': 'product-admin' }
+  });
+}
+
+export async function approveOwnerListing(listingId, { note = '' } = {}) {
+  return fetchJson(`/api/admin/listings/${listingId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-admin-user': 'product-admin'
+    },
+    body: JSON.stringify({ moderationStatus: 'approved', note })
+  });
+}
+
+export async function rejectOwnerListing(listingId, { reason = '' } = {}) {
+  return fetchJson(`/api/admin/listings/${listingId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-admin-user': 'product-admin'
+    },
+    body: JSON.stringify({ moderationStatus: 'rejected', note: reason })
+  });
+}

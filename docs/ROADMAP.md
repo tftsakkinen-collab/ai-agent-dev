@@ -154,7 +154,23 @@
 - Admin moderation tools (basic).
 - Terms, liability notice, and safety checklist UX.
 
-## Immediate Next 3 Tasks
-1. Wire Supabase magic-link send + verify adapter and stage it behind AUTH_PROVIDER=supabase.
-2. Add upload-based photo flow for host listings (replace URL-only image input).
-3. Add pilot launch dashboard card for listing moderation throughput (pending -> approved time).
+## Completed Tasks (2026-07-19)
+- ✅ Supabase magic-link auth adapter and UI (Phase 1)
+- ✅ Photo upload endpoint for host listings (Phase 1)
+- ✅ Admin throughput metrics dashboard (Phase 5)
+- ✅ Host listing edit and moderation reset workflow (Phase 1)
+- ✅ Admin listing moderation filters (Phase 5)
+- ✅ Feedback triage filters and export tools (Cross-cutting)
+- ✅ Booking state machine spec documentation (Phase 2)
+- ✅ Handoff confirmation UI and endpoints (Phase 2)
+- ✅ Deposit evidence collection UI and endpoint (Phase 3)
+- ✅ Double-blind review system (Phase 4)
+- ✅ Terms and safety checklist screens (Cross-cutting)
+- ✅ Branding polish and logo integration (Cross-cutting)
+
+## Immediate Next 5 Tasks
+1. Booking state transition enforcement and validation rules engine.
+2. Admin listing approval/rejection workflow with moderation queue.
+3. Dispute resolution and evidence review interface.
+4. Pilot launch metrics dashboard with real-time KPIs.
+5. Stripe deposit payment integration for booking holds.
