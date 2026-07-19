@@ -1252,56 +1252,124 @@ app.post('/api/bookings/:id/deposit/release', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
 
-  const allBookings = await readBookings();
-  const booking = allBookings.find((item) => item.id === req.params.id);
-  if (!booking || booking.email !== session.email) {
-    return res.status(404).json({ error: 'Booking not found' });
+  const booking = await getBookingById(req.params.id);
+  if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+  // Renter or owner can release
+  const isRenter = booking.email === session.email;
+  const isOwner = booking.ownerEmail === session.email;
+  if (!isRenter && !isOwner) {
+    return res.status(403).json({ error: 'Only booking parties can release deposit' });
   }
 
-  if (!ALLOWED_DEPOSIT_STATUS.includes(booking.depositStatus)) {
-    return res.status(400).json({ error: 'Invalid deposit status' });
+  if (!booking.depositStatus || booking.depositStatus === 'not_required') {
+    return res.json({ ok: true, message: 'No deposit to release' });
   }
 
-  if (booking.depositStatus !== 'held') {
-    return res.status(400).json({ error: 'Deposit can only be released from held status' });
+  if (booking.depositStatus === 'released' || booking.depositStatus === 'claimed') {
+    return res.status(400).json({ error: 'Deposit already processed' });
+  }
+
+  // Verify booking is in appropriate stage for release
+  const allowedStages = ['returned', 'completed'];
+  if (!allowedStages.includes(booking.bookingStage)) {
+    return res.status(400).json({
+      error: `Cannot release deposit in stage '${booking.bookingStage}'`
+    });
   }
 
   booking.depositStatus = 'released';
   booking.depositReleasedAt = new Date().toISOString();
-  await saveBookings(allBookings);
-  return res.json(getSafeBookingView(booking));
+
+  const allBookings = await readBookings();
+  const index = allBookings.findIndex((b) => b.id === req.params.id);
+  if (index >= 0) {
+    allBookings[index] = booking;
+    await saveBookings(allBookings);
+  }
+
+  // Emit notification to renter
+  if (booking.email) {
+    const notif = createNotification(booking.email, 'deposit_released', `Depositi palautettu varauksesta ${booking.product?.name || 'tuotteesta'}`);
+    const allNotifs = await readNotifications();
+    allNotifs.push(notif);
+    await saveNotifications(allNotifs);
+  }
+
+  return res.json({ ok: true, depositStatus: 'released', releasedAt: booking.depositReleasedAt });
 });
 
 app.post('/api/bookings/:id/deposit/claim', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
 
-  const allBookings = await readBookings();
-  const booking = allBookings.find((item) => item.id === req.params.id);
-  if (!booking || booking.email !== session.email) {
-    return res.status(404).json({ error: 'Booking not found' });
+  const booking = await getBookingById(req.params.id);
+  if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+  // Only owner can claim (e.g., for damage/loss on dispute)
+  if (booking.ownerEmail !== session.email) {
+    return res.status(403).json({ error: 'Only owner can claim deposit' });
   }
 
-  if (!ALLOWED_DEPOSIT_STATUS.includes(booking.depositStatus)) {
-    return res.status(400).json({ error: 'Invalid deposit status' });
+  if (!booking.depositStatus || booking.depositStatus === 'not_required') {
+    return res.json({ ok: true, message: 'No deposit to claim' });
   }
 
-  if (booking.depositStatus !== 'held') {
-    return res.status(400).json({ error: 'Deposit can only be claimed from held status' });
+  if (booking.depositStatus === 'released' || booking.depositStatus === 'claimed') {
+    return res.status(400).json({ error: 'Deposit already processed' });
   }
 
-  const requestedAmount = Number(req.body?.amount || booking.depositAmount || 0);
-  if (Number.isNaN(requestedAmount) || requestedAmount < 0) {
-    return res.status(400).json({ error: 'amount must be a non-negative number' });
+  // Verify there's an active dispute
+  if (!booking.disputes || booking.disputes.length === 0) {
+    return res.status(400).json({ error: 'Can only claim deposit with active dispute' });
   }
 
   booking.depositStatus = 'claimed';
-  booking.depositClaimedAmount = Math.min(requestedAmount, booking.depositAmount || 0);
-  booking.depositClaimReason = String(req.body?.reason || 'damage_reported').slice(0, 300);
   booking.depositClaimedAt = new Date().toISOString();
+  booking.depositClaimReason = req.body?.reason || 'Dispute resolution';
 
-  await saveBookings(allBookings);
-  return res.json(getSafeBookingView(booking));
+  const allBookings = await readBookings();
+  const index = allBookings.findIndex((b) => b.id === req.params.id);
+  if (index >= 0) {
+    allBookings[index] = booking;
+    await saveBookings(allBookings);
+  }
+
+  // Emit notification to renter
+  if (booking.email) {
+    const notif = createNotification(booking.email, 'deposit_claimed', `Depositi pidätetty riita-asian vuoksi: ${booking.depositClaimReason}`);
+    const allNotifs = await readNotifications();
+    allNotifs.push(notif);
+    await saveNotifications(allNotifs);
+  }
+
+  return res.json({ ok: true, depositStatus: 'claimed', claimedAt: booking.depositClaimedAt });
+});
+
+app.get('/api/bookings/:id/deposit-status', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const booking = await getBookingById(req.params.id);
+  if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+  // Can view if owner or renter
+  const isOwner = booking.ownerEmail === session.email;
+  const isRenter = booking.email === session.email;
+  if (!isOwner && !isRenter) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  return res.json({
+    bookingId: booking.id,
+    depositStatus: booking.depositStatus || 'not_required',
+    depositAmount: booking.depositAmount || null,
+    heldAt: booking.depositHeldAt || null,
+    releasedAt: booking.depositReleasedAt || null,
+    claimedAt: booking.depositClaimedAt || null,
+    claimReason: booking.depositClaimReason || null,
+    bookingStage: booking.bookingStage
+  });
 });
 
 app.post('/api/bookings/:id/evidence', async (req, res) => {

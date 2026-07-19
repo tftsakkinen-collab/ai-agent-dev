@@ -147,11 +147,11 @@ export async function releaseBookingDeposit(bookingId) {
   });
 }
 
-export async function claimBookingDeposit(bookingId, amount, reason) {
+export async function claimBookingDeposit(bookingId, reason) {
   return fetchJson(`/api/bookings/${bookingId}/deposit/claim`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ amount, reason })
+    body: JSON.stringify({ reason })
   });
 }
 
