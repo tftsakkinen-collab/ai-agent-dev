@@ -3,7 +3,9 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const multer = require('multer');
 const { createAuthProvider } = require('./authProvider');
+const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } });
 const app = express();
 const port = process.env.PORT || 3000;
 const authSecret = process.env.AUTH_SECRET || 'gearspot-dev-auth-secret';
@@ -1668,6 +1670,146 @@ app.patch('/api/owner/listings/:id', async (req, res) => {
 
   await saveOwnerListings(items);
   return res.json(buildProductResponse(listing));
+});
+
+app.post('/api/owner/listings/:id/upload-photo', upload.single('photo'), async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'No photo file provided' });
+  }
+
+  const items = await readOwnerListings();
+  const listing = items.find((item) => item.id === req.params.id);
+  if (!listing || listing.ownerEmail !== session.email) {
+    return res.status(404).json({ error: 'Listing not found' });
+  }
+
+  const photoUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+
+  if (!Array.isArray(listing.photos)) {
+    listing.photos = [];
+  }
+
+  if (listing.photos.length >= 6) {
+    return res.status(400).json({ error: 'Maximum 6 photos per listing' });
+  }
+
+  listing.photos.push(photoUrl);
+  listing.updatedAt = new Date().toISOString();
+
+  await saveOwnerListings(items);
+  return res.json({
+    ok: true,
+    message: 'Photo uploaded',
+    photoUrl,
+    photoCount: listing.photos.length
+  });
+});
+
+app.get('/api/admin/listing-moderation-throughput', async (req, res) => {
+  const adminKey = String(req.headers['x-admin-user'] || '').trim();
+  if (!adminKey || !adminKey.startsWith('admin')) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  const items = await readOwnerListings();
+  const stats = {
+    total: items.length,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    avgTimeToApprovalMinutes: 0,
+    medianTimeToApprovalMinutes: 0
+  };
+
+  const approvalTimes = [];
+
+  items.forEach((item) => {
+    const status = item.moderationStatus || 'pending';
+    if (status === 'pending') stats.pending += 1;
+    if (status === 'approved') stats.approved += 1;
+    if (status === 'rejected') stats.rejected += 1;
+
+    if (status === 'approved' && item.createdAt && item.moderatedAt) {
+      const createdTime = new Date(item.createdAt).getTime();
+      const moderatedTime = new Date(item.moderatedAt).getTime();
+      const diffMinutes = (moderatedTime - createdTime) / (1000 * 60);
+      if (diffMinutes >= 0) {
+        approvalTimes.push(diffMinutes);
+      }
+    }
+  });
+
+  if (approvalTimes.length > 0) {
+    stats.avgTimeToApprovalMinutes = Math.round(
+      approvalTimes.reduce((a, b) => a + b, 0) / approvalTimes.length
+    );
+    approvalTimes.sort((a, b) => a - b);
+    const mid = Math.floor(approvalTimes.length / 2);
+    stats.medianTimeToApprovalMinutes =
+      approvalTimes.length % 2 === 0
+        ? Math.round((approvalTimes[mid - 1] + approvalTimes[mid]) / 2)
+        : Math.round(approvalTimes[mid]);
+  }
+
+  return res.json(stats);
+});
+
+app.post('/api/auth/magic-link/verify', async (req, res) => {
+  const token = String(req.body?.token || '').trim();
+
+  if (!token) {
+    await appendAuthAuditLog('verify_magic_link_missing_token', req, {});
+    return res.status(400).json({ error: 'Token is required' });
+  }
+
+  if (authProvider.providerName === 'supabase') {
+    const result = await authProvider.verifyMagicLinkToken(token);
+    if (result.ok) {
+      const bearerToken = buildAuthToken(result.email);
+      await appendAuthAuditLog('verify_magic_link_success', req, { email: result.email });
+      return res.json({ token: bearerToken, email: result.email, userId: buildUserIdFromEmail(result.email) });
+    }
+    await appendAuthAuditLog('verify_magic_link_failed', req, { error: result.error });
+    return res.status(result.statusCode || 400).json({ error: result.error });
+  }
+
+  if (authProvider.providerName === 'local_code') {
+    const email = normalizeEmail(req.body?.email);
+    if (!isValidEmail(email)) {
+      await appendAuthAuditLog('verify_magic_link_invalid_email', req, { email });
+      return res.status(400).json({ error: 'Valid email required' });
+    }
+
+    cleanupExpiredCodes();
+    const entry = pendingLoginCodes.get(email);
+    if (!entry) {
+      await appendAuthAuditLog('verify_magic_link_missing_or_expired', req, { email });
+      return res.status(400).json({ error: 'Code expired or not requested' });
+    }
+
+    if (entry.attempts >= 5) {
+      pendingLoginCodes.delete(email);
+      await appendAuthAuditLog('verify_magic_link_locked', req, { email });
+      return res.status(429).json({ error: 'Too many attempts. Request a new code.' });
+    }
+
+    if (entry.code !== token) {
+      entry.attempts += 1;
+      await appendAuthAuditLog('verify_magic_link_failed', req, { email, attempts: entry.attempts });
+      return res.status(400).json({ error: 'Invalid code' });
+    }
+
+    pendingLoginCodes.delete(email);
+    const bearerToken = buildAuthToken(email);
+    await appendAuthAuditLog('verify_magic_link_success', req, { email });
+    return res.json({ token: bearerToken, email, userId: buildUserIdFromEmail(email) });
+  }
+
+  await appendAuthAuditLog('verify_magic_link_provider_not_supported', req, {});
+  return res.status(400).json({ error: 'Magic-link verification not available with current provider' });
 });
 
 app.use((error, req, res, next) => {

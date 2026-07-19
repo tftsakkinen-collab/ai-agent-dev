@@ -236,3 +236,57 @@ export async function updateOwnerListing(listingId, payload) {
     body: JSON.stringify(payload)
   });
 }
+
+export async function uploadListingPhoto(listingId, fileBlob) {
+  const token = await getToken();
+  const url = buildUrl(`/api/owner/listings/${listingId}/upload-photo`);
+  const formData = new FormData();
+  formData.append('photo', fileBlob);
+
+  const headers = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: formData
+  });
+
+  const json = await res.json();
+  if (!res.ok) {
+    const message = json?.error || res.statusText || 'Kuvan lataus epäonnistui';
+    throw new Error(message);
+  }
+  return json;
+}
+
+export async function getListingModerationThroughput() {
+  return fetchJson('/api/admin/listing-moderation-throughput', {
+    headers: { 'x-admin-user': 'product-admin' }
+  });
+}
+
+export async function requestMagicLink(email) {
+  return fetchJson('/api/auth/magic-link/request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email })
+  });
+}
+
+export async function verifyMagicLink(token, email = null) {
+  const payload = { token };
+  if (email) payload.email = email;
+  
+  const res = await fetchWithAuth('/api/auth/magic-link/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json?.error || 'Varmennus epäonnistui');
+  if (json.token) {
+    await AsyncStorage.setItem('token', json.token);
+  }
+  return json;
+}

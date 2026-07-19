@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { SafeAreaView, View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
-import { getAdminDisputes, getAdminListings, getAdminPilotMetrics, getAuthAuditLogs, getAuthProviderStatus, moderateAdminListing, resolveAdminDispute } from '../lib/api';
+import { getAdminDisputes, getAdminListings, getAdminPilotMetrics, getAuthAuditLogs, getAuthProviderStatus, getListingModerationThroughput, moderateAdminListing, resolveAdminDispute } from '../lib/api';
 
 export default function AdminOpsScreen() {
   const [disputes, setDisputes] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [pilotMetrics, setPilotMetrics] = useState(null);
+  const [throughputMetrics, setThroughputMetrics] = useState(null);
   const [providerStatus, setProviderStatus] = useState(null);
   const [pendingListings, setPendingListings] = useState([]);
   const [activeStatus, setActiveStatus] = useState('open');
@@ -16,18 +17,20 @@ export default function AdminOpsScreen() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [disputeData, auditData, metricsData, providerData, pendingData] = await Promise.all([
+      const [disputeData, auditData, metricsData, providerData, pendingData, throughputData] = await Promise.all([
         getAdminDisputes(activeStatus),
         getAuthAuditLogs(30),
         getAdminPilotMetrics(30),
         getAuthProviderStatus(),
-        getAdminListings(listingStatusFilter)
+        getAdminListings(listingStatusFilter),
+        getListingModerationThroughput()
       ]);
       setDisputes(disputeData || []);
       setAuditLogs(auditData || []);
       setPilotMetrics(metricsData || null);
       setProviderStatus(providerData || null);
       setPendingListings(pendingData || []);
+      setThroughputMetrics(throughputData || null);
     } catch (error) {
       Alert.alert('Admin-datan haku epäonnistui', error.message);
     } finally {
@@ -117,6 +120,21 @@ export default function AdminOpsScreen() {
               <Text style={styles.metaText}>Average review: {pilotMetrics.metrics?.averageReviewScore ?? '-'}</Text>
               <Text style={styles.metaText}>Resolution time (h): {pilotMetrics.metrics?.averageResolutionHours ?? '-'}</Text>
               <Text style={styles.metaText}>Listing to booking proxy: {pilotMetrics.metrics?.listingToBookingConversionProxyPct ?? 0}%</Text>
+            </>
+          ) : null}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Listing moderation throughput</Text>
+          {!throughputMetrics ? <Text style={styles.metaText}>Ei throughput-dataa.</Text> : null}
+          {throughputMetrics ? (
+            <>
+              <Text style={styles.metaText}>Total: {throughputMetrics.total || 0}</Text>
+              <Text style={styles.metaText}>Pending: {throughputMetrics.pending || 0}</Text>
+              <Text style={styles.metaText}>Approved: {throughputMetrics.approved || 0}</Text>
+              <Text style={styles.metaText}>Rejected: {throughputMetrics.rejected || 0}</Text>
+              <Text style={styles.metaText}>Avg time to approval: {throughputMetrics.avgTimeToApprovalMinutes ?? 0} min</Text>
+              <Text style={styles.metaText}>Median time to approval: {throughputMetrics.medianTimeToApprovalMinutes ?? 0} min</Text>
             </>
           ) : null}
         </View>
