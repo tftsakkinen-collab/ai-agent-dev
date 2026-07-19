@@ -593,6 +593,30 @@ test('owner listing stays pending until admin approval, then appears in product 
   expect(productsRes.status).toBe(200);
   const products = await productsRes.json();
   expect(products.some((item) => item.id === listing.id)).toBeTruthy();
+
+  const ownerEditRes = await fetch(`http://localhost:3000/api/owner/listings/${listing.id}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      name: 'Oma SUP 10\'8" - paivitetty',
+      short: 'Paivitetty kuvaus testia varten.',
+      locationName: 'Hietasaari, Oulu',
+      pricePerHour: 17,
+      pricePerDay: 60,
+      photos: ['https://img.test/owner-sup-1.jpg']
+    })
+  });
+  expect(ownerEditRes.status).toBe(200);
+  const editedListing = await ownerEditRes.json();
+  expect(editedListing.moderationStatus).toBe('pending');
+
+  const afterEditProductsRes = await fetch('http://localhost:3000/api/products');
+  expect(afterEditProductsRes.status).toBe(200);
+  const afterEditProducts = await afterEditProductsRes.json();
+  expect(afterEditProducts.some((item) => item.id === listing.id)).toBeFalsy();
 });
 
 test('booking requires terms and safety acceptance', async () => {

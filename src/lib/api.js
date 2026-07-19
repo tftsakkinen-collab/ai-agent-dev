@@ -217,13 +217,21 @@ export async function moderateAdminListing(listingId, moderationStatus, note = '
   });
 }
 
-export async function getOwnerListings() {
-  return fetchJson('/api/owner/listings');
+export async function getOwnerListings(status = 'all') {
+  return fetchJson(`/api/owner/listings?status=${encodeURIComponent(status)}`);
 }
 
 export async function createOwnerListing(payload) {
   return fetchJson('/api/owner/listings', {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateOwnerListing(listingId, payload) {
+  return fetchJson(`/api/owner/listings/${listingId}`, {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });

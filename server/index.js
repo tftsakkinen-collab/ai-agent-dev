@@ -1553,8 +1553,11 @@ app.get('/api/owner/listings', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
 
+  const status = String(req.query.status || 'all').trim();
   const items = await readOwnerListings();
-  return res.json(items.filter((item) => item.ownerEmail === session.email).map(buildProductResponse));
+  const mine = items.filter((item) => item.ownerEmail === session.email);
+  const filtered = status === 'all' ? mine : mine.filter((item) => (item.moderationStatus || 'pending') === status);
+  return res.json(filtered.map(buildProductResponse));
 });
 
 app.post('/api/owner/listings', async (req, res) => {
@@ -1614,6 +1617,57 @@ app.post('/api/owner/listings', async (req, res) => {
   await saveOwnerListings(items);
 
   return res.status(201).json(buildProductResponse(listing));
+});
+
+app.patch('/api/owner/listings/:id', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const items = await readOwnerListings();
+  const listing = items.find((item) => item.id === req.params.id);
+  if (!listing || listing.ownerEmail !== session.email) {
+    return res.status(404).json({ error: 'Listing not found' });
+  }
+
+  const name = String(req.body?.name || listing.name || '').trim();
+  const short = String(req.body?.short || listing.short || '').trim();
+  const locationName = String(req.body?.locationName || listing.locationName || '').trim();
+  const pricePerHour = Number(req.body?.pricePerHour ?? listing.pricePerHour ?? 0);
+  const pricePerDay = Number(req.body?.pricePerDay ?? listing.pricePerDay ?? 0);
+  const photos = Array.isArray(req.body?.photos)
+    ? req.body.photos.map((photo) => String(photo || '').trim()).filter(Boolean).slice(0, 6)
+    : listing.photos;
+
+  if (!name || !short || !locationName) {
+    return res.status(400).json({ error: 'name, short and locationName are required' });
+  }
+
+  if (!Number.isFinite(pricePerHour) || !Number.isFinite(pricePerDay) || pricePerHour <= 0 || pricePerDay <= 0) {
+    return res.status(400).json({ error: 'pricePerHour and pricePerDay must be positive numbers' });
+  }
+
+  if (!Array.isArray(photos) || !photos.length) {
+    return res.status(400).json({ error: 'At least one photo URL is required' });
+  }
+
+  listing.name = name;
+  listing.short = short;
+  listing.locationName = locationName;
+  listing.pricePerHour = pricePerHour;
+  listing.pricePerDay = pricePerDay;
+  listing.price = `${pricePerHour} €/tunti · ${pricePerDay} €/päivä`;
+  listing.photos = photos;
+  listing.searchTerms = ['sup', 'lauta', 'oulu', locationName.toLowerCase()];
+  listing.updatedAt = new Date().toISOString();
+
+  // Every owner edit returns listing to moderation queue.
+  listing.moderationStatus = 'pending';
+  listing.moderationNote = null;
+  listing.moderatedAt = null;
+  listing.moderatedBy = null;
+
+  await saveOwnerListings(items);
+  return res.json(buildProductResponse(listing));
 });
 
 app.use((error, req, res, next) => {

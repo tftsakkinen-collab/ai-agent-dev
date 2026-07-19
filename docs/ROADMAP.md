@@ -155,6 +155,6 @@
 - Terms, liability notice, and safety checklist UX.
 
 ## Immediate Next 3 Tasks
-1. Replace app header logo asset with final logo image and redeploy.
-2. Implement auth decision doc and choose provider.
-3. Create booking state machine spec (states, transitions, blocked actions).
+1. Wire Supabase magic-link send + verify adapter and stage it behind AUTH_PROVIDER=supabase.
+2. Add upload-based photo flow for host listings (replace URL-only image input).
+3. Add pilot launch dashboard card for listing moderation throughput (pending -> approved time).

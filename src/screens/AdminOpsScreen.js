@@ -10,6 +10,7 @@ export default function AdminOpsScreen() {
   const [providerStatus, setProviderStatus] = useState(null);
   const [pendingListings, setPendingListings] = useState([]);
   const [activeStatus, setActiveStatus] = useState('open');
+  const [listingStatusFilter, setListingStatusFilter] = useState('pending');
   const [loading, setLoading] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -20,7 +21,7 @@ export default function AdminOpsScreen() {
         getAuthAuditLogs(30),
         getAdminPilotMetrics(30),
         getAuthProviderStatus(),
-        getAdminListings('pending')
+        getAdminListings(listingStatusFilter)
       ]);
       setDisputes(disputeData || []);
       setAuditLogs(auditData || []);
@@ -32,7 +33,7 @@ export default function AdminOpsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [activeStatus]);
+  }, [activeStatus, listingStatusFilter]);
 
   const handleModerateListing = async (listingId, moderationStatus) => {
     try {
@@ -132,22 +133,35 @@ export default function AdminOpsScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Listausmoderointi (pending)</Text>
-          {!pendingListings.length ? <Text style={styles.metaText}>Ei odottavia listingeja.</Text> : null}
+          <Text style={styles.sectionTitle}>Listausmoderointi ({listingStatusFilter})</Text>
+          <View style={styles.filterRow}>
+            {['pending', 'approved', 'rejected', 'all'].map((status) => (
+              <TouchableOpacity
+                key={`listing-${status}`}
+                style={[styles.filterChip, listingStatusFilter === status && styles.filterChipActive]}
+                onPress={() => setListingStatusFilter(status)}
+              >
+                <Text style={[styles.filterChipText, listingStatusFilter === status && styles.filterChipTextActive]}>{status}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {!pendingListings.length ? <Text style={styles.metaText}>Ei listingeja tällä suodattimella.</Text> : null}
           {pendingListings.map((listing) => (
             <View key={listing.id} style={styles.disputeItem}>
               <Text style={styles.itemTitle}>{listing.name}</Text>
               <Text style={styles.metaText}>Sijainti: {listing.locationName || '-'}</Text>
               <Text style={styles.metaText}>Vuokraaja: {listing.provider?.name || listing.ownerEmail || '-'}</Text>
               <Text style={styles.metaText}>Tila: {listing.moderationStatus || 'pending'}</Text>
-              <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.successButton} onPress={() => handleModerateListing(listing.id, 'approved')}>
-                  <Text style={styles.successButtonText}>Approve</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.warnButton} onPress={() => handleModerateListing(listing.id, 'rejected')}>
-                  <Text style={styles.warnButtonText}>Reject</Text>
-                </TouchableOpacity>
-              </View>
+              {listingStatusFilter !== 'all' || listing.moderationStatus !== 'approved' ? (
+                <View style={styles.actionRow}>
+                  <TouchableOpacity style={styles.successButton} onPress={() => handleModerateListing(listing.id, 'approved')}>
+                    <Text style={styles.successButtonText}>Approve</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.warnButton} onPress={() => handleModerateListing(listing.id, 'rejected')}>
+                    <Text style={styles.warnButtonText}>Reject</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
             </View>
           ))}
         </View>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { FlatList, RefreshControl, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, RefreshControl, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
 import { fetchJson } from '../lib/api';
 
@@ -19,6 +19,8 @@ export default function FeedbackReportsScreen() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
 
   const loadReports = async () => {
     try {
@@ -46,6 +48,37 @@ export default function FeedbackReportsScreen() {
     loadReports();
   }, []);
 
+  const filteredReports = reports.filter((report) => {
+    const statusOk = statusFilter === 'all' || (report.status || 'new') === statusFilter;
+    const priorityOk = priorityFilter === 'all' || (report.priority || 'medium') === priorityFilter;
+    return statusOk && priorityOk;
+  });
+
+  const exportSummary = async () => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      filters: { status: statusFilter, priority: priorityFilter },
+      total: filteredReports.length,
+      reports: filteredReports.map((item) => ({
+        id: item.id,
+        message: item.message,
+        status: item.status || 'new',
+        priority: item.priority || 'medium',
+        routeName: item.routeName || '-',
+        createdAt: item.createdAt || null
+      }))
+    };
+
+    const text = JSON.stringify(payload, null, 2);
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      Alert.alert('Yhteenveto kopioitu', 'Raporttien yhteenveto kopioitiin leikepöydälle.');
+      return;
+    }
+
+    Alert.alert('Yhteenveto', text.slice(0, 1800));
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
@@ -64,8 +97,38 @@ export default function FeedbackReportsScreen() {
           </View>
         ) : null}
 
+        <View style={styles.toolbarCard}>
+          <Text style={styles.controlLabel}>Status-suodatin</Text>
+          <View style={styles.controlRow}>
+            {['all', ...statuses].map((value) => (
+              <TouchableOpacity
+                key={`status-filter-${value}`}
+                style={[styles.controlButton, statusFilter === value && styles.controlButtonActive]}
+                onPress={() => setStatusFilter(value)}
+              >
+                <Text style={[styles.controlButtonText, statusFilter === value && styles.controlButtonTextActive]}>{value}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.controlLabel}>Priority-suodatin</Text>
+          <View style={styles.controlRow}>
+            {['all', ...priorities].map((value) => (
+              <TouchableOpacity
+                key={`priority-filter-${value}`}
+                style={[styles.controlButton, priorityFilter === value && styles.controlButtonActive]}
+                onPress={() => setPriorityFilter(value)}
+              >
+                <Text style={[styles.controlButtonText, priorityFilter === value && styles.controlButtonTextActive]}>{value}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TouchableOpacity style={styles.exportButton} onPress={exportSummary}>
+            <Text style={styles.exportButtonText}>Kopioi triage-yhteenveto</Text>
+          </TouchableOpacity>
+        </View>
+
         <FlatList
-          data={reports}
+          data={filteredReports}
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={() => { setLoading(true); loadReports(); }} />}
           ListEmptyComponent={
@@ -132,6 +195,7 @@ const styles = StyleSheet.create({
   errorText: { color: '#7b2d26', marginBottom: 12 },
   retryButton: { alignSelf: 'flex-start', backgroundColor: '#7b2d26', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14 },
   retryButtonText: { color: '#fff', fontWeight: '700' },
+  toolbarCard: { backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#e3eaef', padding: 14, marginBottom: 12 },
   card: { backgroundColor: '#fff', borderRadius: 18, padding: 18, marginBottom: 12, borderWidth: 1, borderColor: '#e3eaef' },
   cardTitle: { color: '#0f2f3d', fontSize: 16, fontWeight: '800', marginBottom: 8 },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 },
@@ -151,5 +215,7 @@ const styles = StyleSheet.create({
   controlButtonActive: { backgroundColor: '#0f2f3d', borderColor: '#0f2f3d' },
   controlButtonText: { color: '#385160', fontWeight: '700', textTransform: 'capitalize' },
   controlButtonTextActive: { color: '#fff' },
+  exportButton: { backgroundColor: '#0f2f3d', borderRadius: 12, alignItems: 'center', paddingVertical: 11, marginTop: 8 },
+  exportButtonText: { color: '#fff', fontWeight: '700' },
   emptyText: { color: '#777', textAlign: 'center', marginTop: 24 }
 });
