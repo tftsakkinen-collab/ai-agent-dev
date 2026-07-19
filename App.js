@@ -22,6 +22,9 @@ import HandoffScreen from './src/screens/HandoffScreen';
 import DepositEvidenceScreen from './src/screens/DepositEvidenceScreen';
 import DisputeScreen from './src/screens/DisputeScreen';
 import ListingModerationScreen from './src/screens/ListingModerationScreen';
+import PilotInviteScreen from './src/screens/PilotInviteScreen';
+import NotificationCenterScreen from './src/screens/NotificationCenterScreen';
+import DataExportScreen from './src/screens/DataExportScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -56,6 +59,9 @@ export default function App() {
           <Stack.Screen name="DepositEvidence" component={DepositEvidenceScreen} />
           <Stack.Screen name="Dispute" component={DisputeScreen} />
           <Stack.Screen name="ListingModeration" component={ListingModerationScreen} />
+          <Stack.Screen name="PilotInvite" component={PilotInviteScreen} />
+          <Stack.Screen name="NotificationCenter" component={NotificationCenterScreen} />
+          <Stack.Screen name="DataExport" component={DataExportScreen} />
         </Stack.Navigator>
         <ReportIssueButton routeName={routeName} />
       </NavigationContainer>

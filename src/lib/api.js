@@ -366,3 +366,61 @@ export async function confirmDepositPayment(bookingId, paymentIntentId) {
     body: JSON.stringify({ bookingId, paymentIntentId })
   });
 }
+
+export async function createInviteCode(email) {
+  return fetchJson('/api/pilot/invite-codes', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-admin-user': 'product-admin'
+    },
+    body: JSON.stringify({ email })
+  });
+}
+
+export async function validateInviteCode(code) {
+  return fetchJson('/api/pilot/validate-invite', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code })
+  });
+}
+
+export async function listInviteCodes() {
+  return fetchJson('/api/pilot/invite-codes', {
+    headers: { 'x-admin-user': 'product-admin' }
+  });
+}
+
+export async function getNotifications() {
+  return fetchJson('/api/notifications');
+}
+
+export async function markNotificationRead(notificationId) {
+  return fetchJson(`/api/notifications/${notificationId}/read`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+}
+
+export async function exportBookingsAsCSV() {
+  const res = await fetchWithAuth('/api/export/bookings', {
+    method: 'GET',
+    headers: { Accept: 'text/csv' }
+  });
+  if (!res.ok) throw new Error('Export failed');
+  return res.text();
+}
+
+export async function exportMetricsAsCSV() {
+  const res = await fetchWithAuth('/api/export/metrics', {
+    method: 'GET',
+    headers: {
+      Accept: 'text/csv',
+      'x-admin-user': 'product-admin'
+    }
+  });
+  if (!res.ok) throw new Error('Export failed');
+  return res.text();
+}

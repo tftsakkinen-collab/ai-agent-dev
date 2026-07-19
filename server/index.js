@@ -37,7 +37,9 @@ const STORE_KEYS = {
   dynamicReviews: 'gearspot:dynamicReviews',
   feedbackReports: 'gearspot:feedbackReports',
   authAuditLogs: 'gearspot:authAuditLogs',
-  ownerListings: 'gearspot:ownerListings'
+  ownerListings: 'gearspot:ownerListings',
+  inviteCodes: 'gearspot:inviteCodes',
+  notifications: 'gearspot:notifications'
 };
 
 const BOOKING_STAGE = {
@@ -260,6 +262,44 @@ async function saveOwnerListings(items) {
   const snapshot = Array.isArray(items) ? [...items] : [];
   ownerListings = snapshot;
   await writeStoreList(STORE_KEYS.ownerListings, snapshot);
+}
+
+let inviteCodes = [];
+let notifications = [];
+
+async function readInviteCodes() {
+  return readStoreList(STORE_KEYS.inviteCodes, inviteCodes);
+}
+
+async function saveInviteCodes(items) {
+  const snapshot = Array.isArray(items) ? [...items] : [];
+  inviteCodes = snapshot;
+  await writeStoreList(STORE_KEYS.inviteCodes, snapshot);
+}
+
+async function readNotifications() {
+  return readStoreList(STORE_KEYS.notifications, notifications);
+}
+
+async function saveNotifications(items) {
+  const snapshot = Array.isArray(items) ? [...items] : [];
+  notifications = snapshot;
+  await writeStoreList(STORE_KEYS.notifications, snapshot);
+}
+
+function generateInviteCode() {
+  return crypto.randomBytes(9).toString('hex').toUpperCase().slice(0, 12);
+}
+
+function createNotification(userEmail, type, message) {
+  return {
+    id: `notif-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    userEmail,
+    type,
+    message,
+    read: false,
+    createdAt: new Date().toISOString()
+  };
 }
 
 function getPublicProducts() {
@@ -2129,6 +2169,149 @@ app.post('/api/payments/deposit/confirm', async (req, res) => {
     console.error('Stripe verification error:', error);
     return res.status(400).json({ error: 'Payment verification failed' });
   }
+});
+
+app.post('/api/pilot/invite-codes', async (req, res) => {
+  if (req.method === 'POST') {
+    if (!isAdminAuthorized(req)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { email } = req.body || {};
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'Valid email required' });
+    }
+
+    const code = generateInviteCode();
+    const inviteCode = {
+      id: `invite-${Date.now()}`,
+      code,
+      email: email.toLowerCase(),
+      used: false,
+      usedBy: null,
+      usedAt: null,
+      createdAt: new Date().toISOString()
+    };
+
+    const allCodes = await readInviteCodes();
+    allCodes.push(inviteCode);
+    await saveInviteCodes(allCodes);
+
+    return res.json(inviteCode);
+  }
+
+  // GET - list codes (admin only)
+  if (!isAdminAuthorized(req)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const allCodes = await readInviteCodes();
+  return res.json(allCodes);
+});
+
+app.post('/api/pilot/validate-invite', async (req, res) => {
+  const { code } = req.body || {};
+  if (!code || String(code).length < 8) {
+    return res.status(400).json({ error: 'Valid invite code required' });
+  }
+
+  const allCodes = await readInviteCodes();
+  const inviteCode = allCodes.find((c) => c.code === String(code).toUpperCase());
+
+  if (!inviteCode) {
+    return res.json({ valid: false, message: 'Invite code not found' });
+  }
+
+  if (inviteCode.used) {
+    return res.json({ valid: false, message: 'Invite code already used' });
+  }
+
+  return res.json({ valid: true, message: 'Invite code is valid', email: inviteCode.email });
+});
+
+app.get('/api/notifications', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allNotifications = await readNotifications();
+  const userNotifications = allNotifications
+    .filter((n) => n.userEmail === session.email)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 50);
+
+  return res.json(userNotifications);
+});
+
+app.post('/api/notifications/:id/read', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allNotifications = await readNotifications();
+  const notification = allNotifications.find((n) => n.id === req.params.id);
+
+  if (!notification) {
+    return res.status(404).json({ error: 'Notification not found' });
+  }
+
+  if (notification.userEmail !== session.email) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  notification.read = true;
+  await saveNotifications(allNotifications);
+  return res.json({ ok: true });
+});
+
+app.get('/api/export/bookings', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const userBookings = allBookings.filter((b) => b.email === session.email);
+
+  // Build CSV
+  const headers = ['id', 'productName', 'renterEmail', 'stage', 'depositStatus', 'createdAt', 'completedAt', 'disputes'];
+  const rows = userBookings.map((b) => [
+    b.id,
+    b.product?.name || 'N/A',
+    b.email,
+    b.bookingStage || 'unknown',
+    b.depositStatus || 'not_required',
+    b.createdAt || '',
+    b.completedAt || '',
+    (b.disputes || []).length
+  ]);
+
+  const csv = [headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="bookings-${Date.now()}.csv"`);
+  return res.send(csv);
+});
+
+app.get('/api/export/metrics', async (req, res) => {
+  if (!isAdminAuthorized(req)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const allBookings = await readBookings();
+  const metrics = computePilotMetrics(allBookings, 30);
+
+  // Build CSV with metrics
+  const csv = [
+    'Metric,Value,Unit',
+    `Total Bookings,${metrics.totals.bookings},count`,
+    `Completed Bookings,${metrics.totals.completedBookings},count`,
+    `Disputed Bookings,${metrics.totals.disputedBookings},count`,
+    `Completion Rate,${metrics.metrics.bookingCompletionRatePct},percent`,
+    `Dispute Rate,${metrics.metrics.disputeRatePct},percent`,
+    `Average Review Score,${metrics.metrics.averageReviewScore || 'N/A'},rating`,
+    `Average Resolution Hours,${metrics.metrics.averageResolutionHours || 'N/A'},hours`
+  ].join('\n');
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="metrics-${Date.now()}.csv"`);
+  return res.send(csv);
 });
 
 app.use((error, req, res, next) => {
