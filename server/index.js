@@ -11,12 +11,18 @@ const port = process.env.PORT || 3000;
 const authSecret = process.env.AUTH_SECRET || 'gearspot-dev-auth-secret';
 const exposeAuthCode = process.env.AUTH_EXPOSE_CODE !== 'false';
 const adminApiKey = process.env.ADMIN_API_KEY || '';
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY || 'sk_test_mock';
 const AUTH_CODE_TTL_MS = 10 * 60 * 1000;
 const AUTH_CODE_COOLDOWN_MS = 30 * 1000;
 const AUTH_REQUEST_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_REQUEST_MAX_PER_WINDOW = 6;
 const pendingLoginCodes = new Map();
 const authRequestTracker = new Map();
+
+let stripe = null;
+if (stripeSecretKey && !stripeSecretKey.includes('mock')) {
+  stripe = require('stripe')(stripeSecretKey);
+}
 
 let kv = null;
 
@@ -2014,6 +2020,115 @@ app.get('/api/bookings/:id/disputes', async (req, res) => {
 
   const disputes = booking.disputes || [];
   return res.json(disputes);
+});
+
+app.post('/api/payments/deposit', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { bookingId, depositAmount } = req.body || {};
+  if (!bookingId || !depositAmount || depositAmount <= 0) {
+    return res.status(400).json({ error: 'bookingId and depositAmount required' });
+  }
+
+  const booking = await getBookingById(bookingId);
+  if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+  if (booking.email !== session.email) {
+    return res.status(403).json({ error: 'Not the booking owner' });
+  }
+
+  // For development, create mock payment intent
+  if (!stripe) {
+    return res.json({
+      ok: true,
+      clientSecret: `pi_mock_${Date.now()}`,
+      publishableKey: 'pk_test_mock',
+      amount: Math.round(depositAmount * 100),
+      currency: 'eur',
+      status: 'requires_payment_method'
+    });
+  }
+
+  // Production: create real Stripe payment intent
+  try {
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(depositAmount * 100),
+      currency: 'eur',
+      description: `Deposit for booking ${bookingId}`,
+      metadata: {
+        bookingId,
+        userEmail: session.email
+      }
+    });
+
+    return res.json({
+      ok: true,
+      clientSecret: paymentIntent.client_secret,
+      publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || 'pk_test_mock',
+      amount: paymentIntent.amount,
+      currency: paymentIntent.currency,
+      status: paymentIntent.status
+    });
+  } catch (error) {
+    console.error('Stripe error:', error);
+    return res.status(400).json({ error: 'Payment setup failed: ' + error.message });
+  }
+});
+
+app.post('/api/payments/deposit/confirm', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { bookingId, paymentIntentId } = req.body || {};
+  if (!bookingId || !paymentIntentId) {
+    return res.status(400).json({ error: 'bookingId and paymentIntentId required' });
+  }
+
+  const booking = await getBookingById(bookingId);
+  if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+  if (booking.email !== session.email) {
+    return res.status(403).json({ error: 'Not the booking owner' });
+  }
+
+  // For development, mark deposit as held
+  if (!stripe) {
+    booking.depositStatus = 'held';
+    booking.depositHeldAt = new Date().toISOString();
+    booking.depositPaymentIntentId = paymentIntentId;
+    const allBookings = await readBookings();
+    const index = allBookings.findIndex((b) => b.id === bookingId);
+    if (index >= 0) {
+      allBookings[index] = booking;
+      await saveBookings(allBookings);
+    }
+    return res.json({ ok: true, message: 'Deposit confirmed (mock)', depositStatus: 'held' });
+  }
+
+  // Production: verify payment intent
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (paymentIntent.status !== 'succeeded') {
+      return res.status(400).json({ error: 'Payment not completed' });
+    }
+
+    booking.depositStatus = 'held';
+    booking.depositHeldAt = new Date().toISOString();
+    booking.depositPaymentIntentId = paymentIntentId;
+
+    const allBookings = await readBookings();
+    const index = allBookings.findIndex((b) => b.id === bookingId);
+    if (index >= 0) {
+      allBookings[index] = booking;
+      await saveBookings(allBookings);
+    }
+
+    return res.json({ ok: true, message: 'Deposit confirmed', depositStatus: 'held' });
+  } catch (error) {
+    console.error('Stripe verification error:', error);
+    return res.status(400).json({ error: 'Payment verification failed' });
+  }
 });
 
 app.use((error, req, res, next) => {

@@ -350,3 +350,19 @@ export async function rejectOwnerListing(listingId, { reason = '' } = {}) {
     body: JSON.stringify({ moderationStatus: 'rejected', note: reason })
   });
 }
+
+export async function createDepositPaymentIntent(bookingId, depositAmount) {
+  return fetchJson('/api/payments/deposit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bookingId, depositAmount })
+  });
+}
+
+export async function confirmDepositPayment(bookingId, paymentIntentId) {
+  return fetchJson('/api/payments/deposit/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bookingId, paymentIntentId })
+  });
+}

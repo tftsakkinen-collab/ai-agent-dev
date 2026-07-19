@@ -3,6 +3,93 @@ import { SafeAreaView, View, Text, StyleSheet, TouchableOpacity, ScrollView, Ale
 import ScreenHeader from '../components/ScreenHeader';
 import { getAdminDisputes, getAdminListings, getAdminPilotMetrics, getAuthAuditLogs, getAuthProviderStatus, getListingModerationThroughput, moderateAdminListing, resolveAdminDispute } from '../lib/api';
 
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#fff' },
+  container: { paddingHorizontal: 12, paddingVertical: 8 },
+  metricsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+    flexWrap: 'wrap'
+  },
+  metricCard: {
+    backgroundColor: '#F0F8FF',
+    borderRadius: 8,
+    padding: 12,
+    marginHorizontal: 4,
+    marginVertical: 4,
+    minWidth: '31%',
+    alignItems: 'center'
+  },
+  metricValue: { fontSize: 18, fontWeight: 'bold', color: '#007AFF', marginBottom: 4 },
+  metricLabel: { fontSize: 11, color: '#666', textAlign: 'center' },
+  filterRow: {
+    flexDirection: 'row',
+    marginBottom: 12,
+    flexWrap: 'wrap'
+  },
+  filterChip: {
+    backgroundColor: '#E8E8E8',
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginRight: 6,
+    marginBottom: 6
+  },
+  filterChipActive: { backgroundColor: '#007AFF' },
+  filterChipText: { fontSize: 12, color: '#333', fontWeight: '500' },
+  filterChipTextActive: { color: '#fff' },
+  card: {
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E8E8E8'
+  },
+  sectionTitle: { fontSize: 14, fontWeight: 'bold', marginBottom: 8, color: '#333' },
+  itemTitle: { fontSize: 13, fontWeight: 'bold', color: '#222', marginBottom: 4 },
+  metaText: { fontSize: 12, color: '#666', marginBottom: 2 },
+  disputeItem: {
+    backgroundColor: '#FFF9E6',
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF9800',
+    padding: 10,
+    marginBottom: 8,
+    borderRadius: 4
+  },
+  logItem: {
+    backgroundColor: '#F5F5F5',
+    padding: 8,
+    marginBottom: 6,
+    borderRadius: 4
+  },
+  logEvent: { fontSize: 12, fontWeight: 'bold', color: '#333' },
+  actionRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+    gap: 6
+  },
+  successButton: {
+    flex: 1,
+    backgroundColor: '#4CAF50',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    alignItems: 'center'
+  },
+  successButtonText: { fontSize: 12, color: '#fff', fontWeight: 'bold' },
+  warnButton: {
+    flex: 1,
+    backgroundColor: '#F44336',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    alignItems: 'center'
+  },
+  warnButtonText: { fontSize: 12, color: '#fff', fontWeight: 'bold' }
+});
+
 export default function AdminOpsScreen() {
   const [disputes, setDisputes] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
@@ -74,7 +161,25 @@ export default function AdminOpsScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container}>
-        <ScreenHeader title="Admin Ops" subtitle="Dispute moderation ja auth audit" actionLabel="Päivitä" onAction={loadData} />
+        <ScreenHeader title="Admin Ops" subtitle="Pilot metrics & operations" actionLabel="Päivitä" onAction={loadData} />
+
+        {/* KPI Cards */}
+        {pilotMetrics && (
+          <View style={styles.metricsRow}>
+            <View style={styles.metricCard}>
+              <Text style={styles.metricValue}>{pilotMetrics.metrics?.bookingCompletionRatePct || 0}%</Text>
+              <Text style={styles.metricLabel}>Completion</Text>
+            </View>
+            <View style={styles.metricCard}>
+              <Text style={styles.metricValue}>{pilotMetrics.metrics?.disputeRatePct || 0}%</Text>
+              <Text style={styles.metricLabel}>Disputes</Text>
+            </View>
+            <View style={styles.metricCard}>
+              <Text style={styles.metricValue}>{pilotMetrics.metrics?.averageReviewScore || '-'}</Text>
+              <Text style={styles.metricLabel}>Avg Review</Text>
+            </View>
+          </View>
+        )}
 
         <View style={styles.filterRow}>
           {['open', 'resolved', 'rejected', 'all'].map((status) => (
@@ -199,54 +304,3 @@ export default function AdminOpsScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f4f8fb' },
-  container: { padding: 16, paddingBottom: 40 },
-  filterRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 14 },
-  filterChip: {
-    borderWidth: 1,
-    borderColor: '#d8e1e8',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginRight: 8,
-    marginBottom: 8,
-    backgroundColor: '#fff'
-  },
-  filterChipActive: { borderColor: '#15948b', backgroundColor: '#e8f7f5' },
-  filterChipText: { color: '#456172', fontWeight: '700', textTransform: 'capitalize' },
-  filterChipTextActive: { color: '#0e6d66' },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e2eaef'
-  },
-  sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0f2f3d', marginBottom: 10 },
-  disputeItem: { borderTopWidth: 1, borderTopColor: '#eef3f6', paddingTop: 12, marginTop: 10 },
-  itemTitle: { fontWeight: '700', color: '#0f2f3d', marginBottom: 4 },
-  metaText: { color: '#5d7280', lineHeight: 19 },
-  actionRow: { flexDirection: 'row', marginTop: 10 },
-  successButton: {
-    backgroundColor: '#15948b',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginRight: 8
-  },
-  successButtonText: { color: '#fff', fontWeight: '700' },
-  warnButton: {
-    backgroundColor: '#fff3f0',
-    borderWidth: 1,
-    borderColor: '#efc5b8',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 8
-  },
-  warnButtonText: { color: '#b34b2a', fontWeight: '700' },
-  logItem: { borderTopWidth: 1, borderTopColor: '#eef3f6', paddingTop: 10, marginTop: 10 },
-  logEvent: { color: '#153848', fontWeight: '700' }
-});
