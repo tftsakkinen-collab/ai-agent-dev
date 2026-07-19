@@ -40,7 +40,9 @@ test('login, booking and review flow works with auth token', async () => {
       name: 'Flow Tester',
       email: 'flow@example.com',
       paymentMethod: 'visa',
-      cardLast4: '4242'
+      cardLast4: '4242',
+      termsAccepted: true,
+      safetyChecklistAccepted: true
     })
   });
   expect(bookingRes.status).toBe(200);
@@ -180,7 +182,9 @@ test('booking lifecycle transitions and deposit evidence flow work', async () =>
       productId,
       name: 'Lifecycle Tester',
       paymentMethod: 'visa',
-      cardLast4: '4242'
+      cardLast4: '4242',
+      termsAccepted: true,
+      safetyChecklistAccepted: true
     })
   });
   expect(bookingRes.status).toBe(200);
@@ -328,7 +332,9 @@ test('double-blind booking reviews stay hidden until both are submitted', async 
       productId,
       name: 'Blind Review Tester',
       paymentMethod: 'visa',
-      cardLast4: '4242'
+      cardLast4: '4242',
+      termsAccepted: true,
+      safetyChecklistAccepted: true
     })
   });
   expect(bookingRes.status).toBe(200);
@@ -453,7 +459,9 @@ test('admin can resolve disputed booking', async () => {
       productId,
       name: 'Dispute Tester',
       paymentMethod: 'visa',
-      cardLast4: '9999'
+      cardLast4: '9999',
+      termsAccepted: true,
+      safetyChecklistAccepted: true
     })
   });
   expect(bookingRes.status).toBe(200);
@@ -562,4 +570,36 @@ test('user can create owner SUP listing and it appears in product feed', async (
   expect(productsRes.status).toBe(200);
   const products = await productsRes.json();
   expect(products.some((item) => item.id === listing.id)).toBeTruthy();
+});
+
+test('booking requires terms and safety acceptance', async () => {
+  const loginRes = await fetch('http://localhost:3000/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: `consent-${Date.now()}@example.com` })
+  });
+  expect(loginRes.status).toBe(200);
+  const loginJson = await loginRes.json();
+
+  const products = await fetch('http://localhost:3000/api/products').then((r) => r.json());
+  const productId = products[0].id;
+
+  const bookingRes = await fetch('http://localhost:3000/api/bookings', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      productId,
+      name: 'Consent Tester',
+      paymentMethod: 'visa',
+      cardLast4: '4242',
+      termsAccepted: true,
+      safetyChecklistAccepted: false
+    })
+  });
+  expect(bookingRes.status).toBe(400);
+  const bookingError = await bookingRes.json();
+  expect(bookingError.error).toContain('Terms and safety checklist');
 });

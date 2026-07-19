@@ -782,8 +782,11 @@ app.post('/api/bookings', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
   await readOwnerListings();
-  const { productId, name, paymentMethod, cardLast4 } = req.body || {};
+  const { productId, name, paymentMethod, cardLast4, termsAccepted, safetyChecklistAccepted } = req.body || {};
   if (!productId || !name) return res.status(400).json({ error: 'Missing fields' });
+  if (!termsAccepted || !safetyChecklistAccepted) {
+    return res.status(400).json({ error: 'Terms and safety checklist must be accepted before booking' });
+  }
   const product = getProductById(productId);
   if (!product) return res.status(404).json({ error: 'Product not found' });
   const id = `bkg-${Date.now()}`;
@@ -799,6 +802,9 @@ app.post('/api/bookings', async (req, res) => {
     bookingStage: BOOKING_STAGE.APPROVED,
     paymentStatus: 'paid',
     refundStatus: 'not_requested',
+    consentVersion: '2026-07-sup-oulu-v1',
+    termsAcceptedAt: new Date().toISOString(),
+    safetyChecklistAcceptedAt: new Date().toISOString(),
     depositAmount: 0,
     depositStatus: 'not_required',
     depositClaimedAmount: 0,
