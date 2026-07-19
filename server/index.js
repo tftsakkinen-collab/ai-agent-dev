@@ -28,7 +28,8 @@ const STORE_KEYS = {
   bookings: 'gearspot:bookings',
   dynamicReviews: 'gearspot:dynamicReviews',
   feedbackReports: 'gearspot:feedbackReports',
-  authAuditLogs: 'gearspot:authAuditLogs'
+  authAuditLogs: 'gearspot:authAuditLogs',
+  ownerListings: 'gearspot:ownerListings'
 };
 
 const BOOKING_STAGE = {
@@ -164,6 +165,7 @@ const categories = [
 // Simple in-memory bookings store
 let bookings = [];
 let dynamicReviews = [];
+let ownerListings = [];
 const feedbackReports = [];
 const authAuditLogs = [];
 const feedbackLogPath = path.join(__dirname, '..', 'logs', 'feedback-reports.ndjson');
@@ -236,6 +238,27 @@ async function saveAuthAuditLogs(items) {
   authAuditLogs.length = 0;
   authAuditLogs.push(...snapshot);
   await writeStoreList(STORE_KEYS.authAuditLogs, snapshot);
+}
+
+async function readOwnerListings() {
+  const data = await readStoreList(STORE_KEYS.ownerListings, ownerListings);
+  const snapshot = Array.isArray(data) ? [...data] : [];
+  ownerListings = snapshot;
+  return snapshot;
+}
+
+async function saveOwnerListings(items) {
+  const snapshot = Array.isArray(items) ? [...items] : [];
+  ownerListings = snapshot;
+  await writeStoreList(STORE_KEYS.ownerListings, snapshot);
+}
+
+function getAllProducts() {
+  return [...products, ...ownerListings];
+}
+
+function buildOwnerProviderId(email) {
+  return `owner-${crypto.createHash('sha256').update(String(email)).digest('hex').slice(0, 10)}`;
 }
 
 async function getBookingById(id) {
@@ -341,7 +364,7 @@ function computePilotMetrics(bookingsList, periodDays) {
 }
 
 function getProductById(id) {
-  return products.find((product) => product.id === id);
+  return getAllProducts().find((product) => product.id === id);
 }
 
 function getProviderById(id) {
@@ -368,14 +391,19 @@ async function buildProviderResponse(provider) {
     ...provider,
     reviews: providerReviews,
     rating: getAverageRating(providerReviews),
-    products: products.filter((product) => product.providerId === provider.id)
+    products: getAllProducts().filter((product) => product.providerId === provider.id)
   };
 }
 
 function buildProductResponse(product) {
+  const providerFallback = {
+    id: product.providerId || 'provider-community',
+    name: 'Yksityinen vuokraaja',
+    description: 'Yhteisön jäsenen lisäämä SUP-listaus.'
+  };
   return {
     ...product,
-    provider: getProviderById(product.providerId)
+    provider: getProviderById(product.providerId) || product.provider || providerFallback
   };
 }
 
@@ -753,6 +781,7 @@ app.get('/api/bookings', async (req, res) => {
 app.post('/api/bookings', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  await readOwnerListings();
   const { productId, name, paymentMethod, cardLast4 } = req.body || {};
   if (!productId || !name) return res.status(400).json({ error: 'Missing fields' });
   const product = getProductById(productId);
@@ -1381,18 +1410,35 @@ app.get('/api/categories', (req, res) => {
   res.json(categories);
 });
 
-app.get('/api/products', (req, res) => {
-  res.json(products.map(buildProductResponse));
+app.get('/api/products', async (req, res) => {
+  await readOwnerListings();
+  res.json(getAllProducts().map(buildProductResponse));
 });
 
-app.get('/api/products/:id', (req, res) => {
+app.get('/api/products/:id', async (req, res) => {
+  await readOwnerListings();
   const product = getProductById(req.params.id);
   if (!product) return res.status(404).json({ error: 'Product not found' });
   res.json(buildProductResponse(product));
 });
 
 app.get('/api/providers', async (req, res) => {
-  res.json(await Promise.all(providers.map(buildProviderResponse)));
+  await readOwnerListings();
+  const communityProviders = Array.from(
+    new Map(
+      ownerListings
+        .filter((listing) => listing.ownerEmail)
+        .map((listing) => [
+          listing.providerId,
+          {
+            id: listing.providerId,
+            name: listing.provider?.name || 'Yksityinen vuokraaja',
+            description: 'Yhteisön jäsenen oma SUP-listaus'
+          }
+        ])
+    ).values()
+  );
+  res.json(await Promise.all([...providers, ...communityProviders].map(buildProviderResponse)));
 });
 
 app.get('/api/providers/:id', async (req, res) => {
@@ -1435,6 +1481,7 @@ app.post('/api/reviews', async (req, res) => {
 });
 
 app.get('/api/locations', async (req, res) => {
+  await readOwnerListings();
   const query = (req.query.q || '').trim().toLowerCase();
 
   const filtered = locations.filter((location) => {
@@ -1451,6 +1498,69 @@ app.get('/api/locations', async (req, res) => {
   });
 
   res.json(await Promise.all(filtered.map(buildLocationResponse)));
+});
+
+app.get('/api/owner/listings', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const items = await readOwnerListings();
+  return res.json(items.filter((item) => item.ownerEmail === session.email).map(buildProductResponse));
+});
+
+app.post('/api/owner/listings', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const name = String(req.body?.name || '').trim();
+  const short = String(req.body?.short || '').trim();
+  const locationName = String(req.body?.locationName || '').trim();
+  const photos = Array.isArray(req.body?.photos)
+    ? req.body.photos.map((photo) => String(photo || '').trim()).filter(Boolean).slice(0, 6)
+    : [];
+  const pricePerHour = Number(req.body?.pricePerHour || 0);
+  const pricePerDay = Number(req.body?.pricePerDay || 0);
+
+  if (!name || !short || !locationName) {
+    return res.status(400).json({ error: 'name, short and locationName are required' });
+  }
+
+  if (!Number.isFinite(pricePerHour) || !Number.isFinite(pricePerDay) || pricePerHour <= 0 || pricePerDay <= 0) {
+    return res.status(400).json({ error: 'pricePerHour and pricePerDay must be positive numbers' });
+  }
+
+  if (!photos.length) {
+    return res.status(400).json({ error: 'At least one photo URL is required' });
+  }
+
+  const providerId = buildOwnerProviderId(session.email);
+  const providerName = String(req.body?.providerName || '').trim() || session.email;
+  const listing = {
+    id: `owner-sup-${Date.now()}`,
+    type: 'sup_board',
+    name,
+    short,
+    price: `${pricePerHour} €/tunti · ${pricePerDay} €/päivä`,
+    pricePerHour,
+    pricePerDay,
+    providerId,
+    provider: {
+      id: providerId,
+      name: providerName,
+      description: 'Yhteisön jäsenen lisäämä SUP-listaus'
+    },
+    ownerEmail: session.email,
+    photos,
+    locationName,
+    searchTerms: ['sup', 'lauta', 'oulu', locationName.toLowerCase()],
+    createdAt: new Date().toISOString()
+  };
+
+  const items = await readOwnerListings();
+  items.unshift(listing);
+  await saveOwnerListings(items);
+
+  return res.status(201).json(buildProductResponse(listing));
 });
 
 app.use((error, req, res, next) => {

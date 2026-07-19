@@ -521,3 +521,45 @@ test('pilot catalog is restricted to Oulu SUP inventory', async () => {
   expect(locations.length).toBeGreaterThan(0);
   expect(locations.every((location) => location.place === 'Oulu')).toBeTruthy();
 });
+
+test('user can create owner SUP listing and it appears in product feed', async () => {
+  const loginRes = await fetch('http://localhost:3000/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: `host-${Date.now()}@example.com` })
+  });
+  expect(loginRes.status).toBe(200);
+  const loginJson = await loginRes.json();
+
+  const createRes = await fetch('http://localhost:3000/api/owner/listings', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      name: 'Oma SUP 10\'8"',
+      short: 'Hyväkuntoinen lauta ja mela mukaan.',
+      locationName: 'Nallikari, Oulu',
+      pricePerHour: 16,
+      pricePerDay: 58,
+      photos: ['https://img.test/owner-sup-1.jpg']
+    })
+  });
+  expect(createRes.status).toBe(201);
+  const listing = await createRes.json();
+  expect(listing.type).toBe('sup_board');
+  expect(listing.ownerEmail).toBeTruthy();
+
+  const mineRes = await fetch('http://localhost:3000/api/owner/listings', {
+    headers: { Authorization: `Bearer ${loginJson.token}` }
+  });
+  expect(mineRes.status).toBe(200);
+  const mine = await mineRes.json();
+  expect(mine.some((item) => item.id === listing.id)).toBeTruthy();
+
+  const productsRes = await fetch('http://localhost:3000/api/products');
+  expect(productsRes.status).toBe(200);
+  const products = await productsRes.json();
+  expect(products.some((item) => item.id === listing.id)).toBeTruthy();
+});

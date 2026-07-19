@@ -201,3 +201,15 @@ export async function getAdminPilotMetrics(days = 30) {
 export async function getAuthProviderStatus() {
   return fetchJson('/api/auth/provider-status');
 }
+
+export async function getOwnerListings() {
+  return fetchJson('/api/owner/listings');
+}
+
+export async function createOwnerListing(payload) {
+  return fetchJson('/api/owner/listings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+}

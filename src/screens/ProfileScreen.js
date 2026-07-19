@@ -314,6 +314,9 @@ export default function ProfileScreen({ navigation }) {
             <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate('RenterReview')}>
               <Text style={styles.primaryButtonText}>Arvioi vuokraaja</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate('BecomeHost')}>
+              <Text style={styles.primaryButtonText}>Ala vuokraajaksi</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.secondaryActionButton} onPress={() => navigation.navigate('FeedbackReports')}>
               <Text style={styles.secondaryActionButtonText}>Katso virheraportit</Text>
             </TouchableOpacity>

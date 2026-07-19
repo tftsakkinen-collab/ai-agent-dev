@@ -21,6 +21,8 @@ export default function ProductList({ products = [], navigation }) {
           <Text style={styles.rating}>{ratingLabel}</Text>
         </View>
         <Text style={styles.desc}>{item.short}</Text>
+        {item.locationName ? <Text style={styles.location}>Sijainti: {item.locationName}</Text> : null}
+        {Array.isArray(item.photos) && item.photos.length ? <Text style={styles.photoCount}>Kuvia: {item.photos.length}</Text> : null}
       </TouchableOpacity>
     );
   };
@@ -51,5 +53,7 @@ const styles = StyleSheet.create({
   price: { color: '#333', fontWeight: '700' },
   rating: { color: '#15948b', fontWeight: '700' },
   desc: { color: '#666', lineHeight: 20 },
+  location: { color: '#4c6372', marginTop: 8 },
+  photoCount: { color: '#4c6372', marginTop: 2, fontWeight: '600' },
   empty: { textAlign: 'center', color: '#777', marginTop: 32 }
 });
