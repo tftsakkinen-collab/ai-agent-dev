@@ -8,6 +8,10 @@ test('mock api serves products and requires auth for bookings', async () => {
   // bookings should be unauthorized without token
   const res = await fetch('http://localhost:3000/api/bookings');
   expect(res.status).toBe(401);
+  expect(res.headers.get('x-request-id')).toBeTruthy();
+  const unauthorized = await res.json();
+  expect(unauthorized.error).toBe('Unauthorized');
+  expect(unauthorized.requestId).toBeTruthy();
 });
 
 test('login, booking and review flow works with auth token', async () => {

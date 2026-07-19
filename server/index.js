@@ -47,6 +47,38 @@ const REVIEW_REVEAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 app.use(cors());
 app.use(express.json());
+app.use((req, res, next) => {
+  const incomingRequestId = String(req.headers['x-request-id'] || '').trim();
+  const requestId = /^[A-Za-z0-9._-]{6,120}$/.test(incomingRequestId) ? incomingRequestId : `req_${crypto.randomUUID()}`;
+  const startedAt = Date.now();
+
+  req.requestId = requestId;
+  res.setHeader('x-request-id', requestId);
+
+  const originalJson = res.json.bind(res);
+  res.json = (payload) => {
+    if (res.statusCode >= 400 && payload && typeof payload === 'object' && !Array.isArray(payload) && !Object.prototype.hasOwnProperty.call(payload, 'requestId')) {
+      return originalJson({ ...payload, requestId });
+    }
+    return originalJson(payload);
+  };
+
+  res.on('finish', () => {
+    if (!req.originalUrl.startsWith('/api/')) {
+      return;
+    }
+
+    const durationMs = Date.now() - startedAt;
+    const logLine = `[api] ${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs}ms requestId=${requestId}`;
+    if (res.statusCode >= 500) {
+      console.error(logLine);
+      return;
+    }
+    console.info(logLine);
+  });
+
+  next();
+});
 
 // Simple mock data based on seeded profiles
 const providers = [
@@ -364,6 +396,7 @@ async function appendAuthAuditLog(event, req, details = {}) {
   const entry = {
     id: `auth-audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     event,
+    requestId: req.requestId || null,
     ip: getClientIp(req),
     timestamp: new Date().toISOString(),
     ...details
@@ -1300,6 +1333,14 @@ app.get('/api/locations', async (req, res) => {
   });
 
   res.json(await Promise.all(filtered.map(buildLocationResponse)));
+});
+
+app.use((error, req, res, next) => {
+  console.error(`[api] Unhandled error requestId=${req.requestId || 'unknown'}`, error);
+  if (res.headersSent) {
+    return next(error);
+  }
+  return res.status(500).json({ error: 'Internal Server Error' });
 });
 
 if (require.main === module) {
