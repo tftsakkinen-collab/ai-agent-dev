@@ -45,6 +45,7 @@ const BOOKING_STAGE = {
 const ALLOWED_HANDOFF_METHODS = ['lockbox_code', 'in_person'];
 const ALLOWED_DEPOSIT_STATUS = ['not_required', 'held', 'released', 'claimed'];
 const ALLOWED_REVIEW_ACTORS = ['owner', 'renter'];
+const ALLOWED_LISTING_MODERATION_STATUS = ['pending', 'approved', 'rejected'];
 const REVIEW_REVEAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const authProvider = createAuthProvider({
   providerName: process.env.AUTH_PROVIDER || 'local_code',
@@ -253,12 +254,30 @@ async function saveOwnerListings(items) {
   await writeStoreList(STORE_KEYS.ownerListings, snapshot);
 }
 
-function getAllProducts() {
-  return [...products, ...ownerListings];
+function getPublicProducts() {
+  return [...products, ...ownerListings.filter((listing) => listing.moderationStatus === 'approved')];
 }
 
 function buildOwnerProviderId(email) {
   return `owner-${crypto.createHash('sha256').update(String(email)).digest('hex').slice(0, 10)}`;
+}
+
+function getCommunityProviders({ includePending = false } = {}) {
+  return Array.from(
+    new Map(
+      ownerListings
+        .filter((listing) => listing.ownerEmail)
+        .filter((listing) => includePending || listing.moderationStatus === 'approved')
+        .map((listing) => [
+          listing.providerId,
+          {
+            id: listing.providerId,
+            name: listing.provider?.name || 'Yksityinen vuokraaja',
+            description: 'Yhteisön jäsenen oma SUP-listaus'
+          }
+        ])
+    ).values()
+  );
 }
 
 async function getBookingById(id) {
@@ -364,7 +383,7 @@ function computePilotMetrics(bookingsList, periodDays) {
 }
 
 function getProductById(id) {
-  return getAllProducts().find((product) => product.id === id);
+  return getPublicProducts().find((product) => product.id === id);
 }
 
 function getProviderById(id) {
@@ -391,7 +410,7 @@ async function buildProviderResponse(provider) {
     ...provider,
     reviews: providerReviews,
     rating: getAverageRating(providerReviews),
-    products: getAllProducts().filter((product) => product.providerId === provider.id)
+    products: getPublicProducts().filter((product) => product.providerId === provider.id)
   };
 }
 
@@ -1102,6 +1121,42 @@ app.get('/api/admin/pilot-metrics', async (req, res) => {
   return res.json(computePilotMetrics(scoped, periodDays));
 });
 
+app.get('/api/admin/listings', async (req, res) => {
+  if (!isAdminAuthorized(req)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const status = String(req.query.status || 'pending').trim();
+  const items = await readOwnerListings();
+  const filtered = status === 'all' ? items : items.filter((item) => (item.moderationStatus || 'pending') === status);
+  return res.json(filtered.map(buildProductResponse));
+});
+
+app.patch('/api/admin/listings/:id', async (req, res) => {
+  if (!isAdminAuthorized(req)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const nextStatus = String(req.body?.moderationStatus || '').trim();
+  if (!ALLOWED_LISTING_MODERATION_STATUS.includes(nextStatus)) {
+    return res.status(400).json({ error: 'moderationStatus must be pending, approved or rejected' });
+  }
+
+  const items = await readOwnerListings();
+  const listing = items.find((item) => item.id === req.params.id);
+  if (!listing) {
+    return res.status(404).json({ error: 'Listing not found' });
+  }
+
+  listing.moderationStatus = nextStatus;
+  listing.moderationNote = String(req.body?.note || '').trim() || null;
+  listing.moderatedAt = new Date().toISOString();
+  listing.moderatedBy = getAdminActor(req);
+
+  await saveOwnerListings(items);
+  return res.json(buildProductResponse(listing));
+});
+
 app.post('/api/bookings/:id/deposit/setup', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
@@ -1418,7 +1473,7 @@ app.get('/api/categories', (req, res) => {
 
 app.get('/api/products', async (req, res) => {
   await readOwnerListings();
-  res.json(getAllProducts().map(buildProductResponse));
+  res.json(getPublicProducts().map(buildProductResponse));
 });
 
 app.get('/api/products/:id', async (req, res) => {
@@ -1430,25 +1485,13 @@ app.get('/api/products/:id', async (req, res) => {
 
 app.get('/api/providers', async (req, res) => {
   await readOwnerListings();
-  const communityProviders = Array.from(
-    new Map(
-      ownerListings
-        .filter((listing) => listing.ownerEmail)
-        .map((listing) => [
-          listing.providerId,
-          {
-            id: listing.providerId,
-            name: listing.provider?.name || 'Yksityinen vuokraaja',
-            description: 'Yhteisön jäsenen oma SUP-listaus'
-          }
-        ])
-    ).values()
-  );
+  const communityProviders = getCommunityProviders();
   res.json(await Promise.all([...providers, ...communityProviders].map(buildProviderResponse)));
 });
 
 app.get('/api/providers/:id', async (req, res) => {
-  const provider = getProviderById(req.params.id);
+  await readOwnerListings();
+  const provider = [...providers, ...getCommunityProviders()].find((item) => item.id === req.params.id);
   if (!provider) return res.status(404).json({ error: 'Not found' });
   res.json(await buildProviderResponse(provider));
 });
@@ -1556,6 +1599,10 @@ app.post('/api/owner/listings', async (req, res) => {
       description: 'Yhteisön jäsenen lisäämä SUP-listaus'
     },
     ownerEmail: session.email,
+    moderationStatus: 'pending',
+    moderationNote: null,
+    moderatedAt: null,
+    moderatedBy: null,
     photos,
     locationName,
     searchTerms: ['sup', 'lauta', 'oulu', locationName.toLowerCase()],

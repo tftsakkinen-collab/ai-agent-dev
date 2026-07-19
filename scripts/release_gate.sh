@@ -9,6 +9,7 @@ echo "Running release gate checks..."
 missing=()
 required_files=(
   "docs/RELEASE_CHECKLIST.md"
+  "docs/BRANCH_POLICY.md"
   "docs/GITHUB_SECRETS_CHECKLIST.md"
   "docs/PRODUCT_DATA_VERIFICATION_TEMPLATE.md"
   ".github/workflows/release.yml"
@@ -36,6 +37,13 @@ if grep -Eq "\|[[:space:]]*(BLOCKED|PENDING)[[:space:]]*\|" docs/PRODUCT_DATA_VE
 fi
 
 echo "- Product data verification passed"
+
+if ! grep -q "Policy status: LOCKED" docs/BRANCH_POLICY.md; then
+  echo "ERROR: Branch policy is not locked (expected 'Policy status: LOCKED')."
+  exit 1
+fi
+
+echo "- Branch policy lock passed"
 
 if [[ -z "${EAS_TOKEN:-}" ]]; then
   echo "ERROR: EAS_TOKEN is required for release gate"

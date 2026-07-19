@@ -15,8 +15,8 @@ export default function BookingScreen({ route, navigation }) {
   const [email, setEmail] = useState('');
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0].id);
   const [cardLast4, setCardLast4] = useState('4242');
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [safetyAccepted, setSafetyAccepted] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(Boolean(route?.params?.termsAccepted));
+  const [safetyAccepted, setSafetyAccepted] = useState(Boolean(route?.params?.safetyAccepted));
 
   React.useEffect(() => {
     getProfile()

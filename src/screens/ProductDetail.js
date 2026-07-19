@@ -20,7 +20,7 @@ export default function ProductDetail({ route, navigation }) {
           title="Tuote"
           subtitle={product.name}
           actionLabel="Varaa"
-          onAction={() => navigation.navigate('Booking', { product })}
+          onAction={() => navigation.navigate('TermsSafety', { product })}
         />
         <View style={styles.card}>
           {Array.isArray(product.photos) && product.photos[0] ? (

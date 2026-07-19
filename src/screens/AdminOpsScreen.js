@@ -1,35 +1,52 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { SafeAreaView, View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
-import { getAdminDisputes, getAdminPilotMetrics, getAuthAuditLogs, getAuthProviderStatus, resolveAdminDispute } from '../lib/api';
+import { getAdminDisputes, getAdminListings, getAdminPilotMetrics, getAuthAuditLogs, getAuthProviderStatus, moderateAdminListing, resolveAdminDispute } from '../lib/api';
 
 export default function AdminOpsScreen() {
   const [disputes, setDisputes] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [pilotMetrics, setPilotMetrics] = useState(null);
   const [providerStatus, setProviderStatus] = useState(null);
+  const [pendingListings, setPendingListings] = useState([]);
   const [activeStatus, setActiveStatus] = useState('open');
   const [loading, setLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [disputeData, auditData, metricsData, providerData] = await Promise.all([
+      const [disputeData, auditData, metricsData, providerData, pendingData] = await Promise.all([
         getAdminDisputes(activeStatus),
         getAuthAuditLogs(30),
         getAdminPilotMetrics(30),
-        getAuthProviderStatus()
+        getAuthProviderStatus(),
+        getAdminListings('pending')
       ]);
       setDisputes(disputeData || []);
       setAuditLogs(auditData || []);
       setPilotMetrics(metricsData || null);
       setProviderStatus(providerData || null);
+      setPendingListings(pendingData || []);
     } catch (error) {
       Alert.alert('Admin-datan haku epäonnistui', error.message);
     } finally {
       setLoading(false);
     }
   }, [activeStatus]);
+
+  const handleModerateListing = async (listingId, moderationStatus) => {
+    try {
+      await moderateAdminListing(
+        listingId,
+        moderationStatus,
+        moderationStatus === 'approved' ? 'Approved via admin panel' : 'Rejected via admin panel'
+      );
+      Alert.alert('Listing päivitetty', `Tila: ${moderationStatus}`);
+      loadData();
+    } catch (error) {
+      Alert.alert('Listingin päivitys epäonnistui', error.message);
+    }
+  };
 
   useEffect(() => {
     loadData();
@@ -112,6 +129,27 @@ export default function AdminOpsScreen() {
               <Text style={styles.metaText}>Ready: {providerStatus.ready ? 'yes' : 'no'}</Text>
             </>
           ) : null}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Listausmoderointi (pending)</Text>
+          {!pendingListings.length ? <Text style={styles.metaText}>Ei odottavia listingeja.</Text> : null}
+          {pendingListings.map((listing) => (
+            <View key={listing.id} style={styles.disputeItem}>
+              <Text style={styles.itemTitle}>{listing.name}</Text>
+              <Text style={styles.metaText}>Sijainti: {listing.locationName || '-'}</Text>
+              <Text style={styles.metaText}>Vuokraaja: {listing.provider?.name || listing.ownerEmail || '-'}</Text>
+              <Text style={styles.metaText}>Tila: {listing.moderationStatus || 'pending'}</Text>
+              <View style={styles.actionRow}>
+                <TouchableOpacity style={styles.successButton} onPress={() => handleModerateListing(listing.id, 'approved')}>
+                  <Text style={styles.successButtonText}>Approve</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.warnButton} onPress={() => handleModerateListing(listing.id, 'rejected')}>
+                  <Text style={styles.warnButtonText}>Reject</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
         </View>
 
         <View style={styles.card}>

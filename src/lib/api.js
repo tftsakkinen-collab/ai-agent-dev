@@ -202,6 +202,21 @@ export async function getAuthProviderStatus() {
   return fetchJson('/api/auth/provider-status');
 }
 
+export async function getAdminListings(status = 'pending') {
+  return fetchJson(`/api/admin/listings?status=${encodeURIComponent(status)}`);
+}
+
+export async function moderateAdminListing(listingId, moderationStatus, note = '') {
+  return fetchJson(`/api/admin/listings/${listingId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-admin-user': 'product-admin'
+    },
+    body: JSON.stringify({ moderationStatus, note })
+  });
+}
+
 export async function getOwnerListings() {
   return fetchJson('/api/owner/listings');
 }

@@ -15,6 +15,7 @@ import ReportIssueButton from './src/components/ReportIssueButton';
 import FeedbackReportsScreen from './src/screens/FeedbackReportsScreen';
 import AdminOpsScreen from './src/screens/AdminOpsScreen';
 import BecomeHostScreen from './src/screens/BecomeHostScreen';
+import TermsSafetyScreen from './src/screens/TermsSafetyScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -40,6 +41,7 @@ export default function App() {
           <Stack.Screen name="FeedbackReports" component={FeedbackReportsScreen} />
           <Stack.Screen name="AdminOps" component={AdminOpsScreen} />
           <Stack.Screen name="BecomeHost" component={BecomeHostScreen} />
+          <Stack.Screen name="TermsSafety" component={TermsSafetyScreen} />
           <Stack.Screen name="Auth" component={AuthScreen} />
           <Stack.Screen name="MapSearch" component={MapSearchScreen} />
         </Stack.Navigator>

@@ -530,7 +530,7 @@ test('pilot catalog is restricted to Oulu SUP inventory', async () => {
   expect(locations.every((location) => location.place === 'Oulu')).toBeTruthy();
 });
 
-test('user can create owner SUP listing and it appears in product feed', async () => {
+test('owner listing stays pending until admin approval, then appears in product feed', async () => {
   const loginRes = await fetch('http://localhost:3000/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -558,6 +558,7 @@ test('user can create owner SUP listing and it appears in product feed', async (
   const listing = await createRes.json();
   expect(listing.type).toBe('sup_board');
   expect(listing.ownerEmail).toBeTruthy();
+  expect(listing.moderationStatus).toBe('pending');
 
   const mineRes = await fetch('http://localhost:3000/api/owner/listings', {
     headers: { Authorization: `Bearer ${loginJson.token}` }
@@ -565,6 +566,28 @@ test('user can create owner SUP listing and it appears in product feed', async (
   expect(mineRes.status).toBe(200);
   const mine = await mineRes.json();
   expect(mine.some((item) => item.id === listing.id)).toBeTruthy();
+
+  const pendingProductsRes = await fetch('http://localhost:3000/api/products');
+  expect(pendingProductsRes.status).toBe(200);
+  const pendingProducts = await pendingProductsRes.json();
+  expect(pendingProducts.some((item) => item.id === listing.id)).toBeFalsy();
+
+  const adminPendingRes = await fetch('http://localhost:3000/api/admin/listings?status=pending');
+  expect(adminPendingRes.status).toBe(200);
+  const adminPending = await adminPendingRes.json();
+  expect(adminPending.some((item) => item.id === listing.id)).toBeTruthy();
+
+  const approveRes = await fetch(`http://localhost:3000/api/admin/listings/${listing.id}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-admin-user': 'qa-admin'
+    },
+    body: JSON.stringify({ moderationStatus: 'approved', note: 'Looks good for Oulu pilot' })
+  });
+  expect(approveRes.status).toBe(200);
+  const approvedListing = await approveRes.json();
+  expect(approvedListing.moderationStatus).toBe('approved');
 
   const productsRes = await fetch('http://localhost:3000/api/products');
   expect(productsRes.status).toBe(200);

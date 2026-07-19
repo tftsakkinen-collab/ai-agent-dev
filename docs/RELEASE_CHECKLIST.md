@@ -9,4 +9,6 @@
 7. Run full test suite and performance smoke tests.
 8. Run deploy smoke checks (npm run smoke:deploy) against the target URL.
 9. Verify API error responses include x-request-id for traceability.
-10. Release communications and monitoring (Sentry, logs).
+10. Verify branch policy lock in docs/BRANCH_POLICY.md (Policy status: LOCKED).
+11. Confirm production deploy branch is main and mirror branch is synced.
+12. Release communications and monitoring (Sentry, logs).
