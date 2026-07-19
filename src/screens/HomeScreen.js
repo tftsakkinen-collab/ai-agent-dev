@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { SafeAreaView, Text, StyleSheet, View, TouchableOpacity, TextInput, ScrollView } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
 import ProductList from '../components/ProductList';
+import { fetchJson } from '../lib/api';
 
 const quickSearchItems = [
   { label: 'SUP-lauta', query: 'sup' },
@@ -27,13 +28,11 @@ export default function HomeScreen({ navigation }) {
   const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
-    fetch('http://localhost:3000/api/products')
-      .then((res) => res.json())
+    fetchJson('/api/products')
       .then((data) => setProducts(data))
       .catch(() => setProducts([]));
 
-    fetch('http://localhost:3000/api/categories')
-      .then((res) => res.json())
+    fetchJson('/api/categories')
       .then((data) => setCategories(data))
       .catch(() => setCategories(categoryCards));
   }, []);
@@ -46,7 +45,7 @@ export default function HomeScreen({ navigation }) {
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container}>
         <ScreenHeader
-          title="Gearspot"
+          title={null}
           subtitle="Löydä ja varaa varusteet läheltäsi"
           actionLabel="Profiili"
           onAction={() => navigation.navigate('Profile')}

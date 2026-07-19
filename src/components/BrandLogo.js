@@ -1,17 +1,21 @@
 import React from 'react';
-import { View, StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 export default function BrandLogo({ size = 48, showText = true, showTagline = false }) {
   return (
     <View style={styles.wrapper}>
-      <View style={[styles.iconCircle, { width: size, height: size, borderRadius: size / 2 }]}>        
+      <View style={[styles.iconCircle, { width: size, height: size, borderRadius: size / 2 }]}> 
         <View style={[styles.innerShape, { width: size * 0.42, height: size * 0.42, borderRadius: size * 0.21 }]} />
         <View style={[styles.pinTip, { borderLeftWidth: size * 0.09, borderRightWidth: size * 0.09, borderTopWidth: size * 0.14 }]} />
       </View>
       {showText ? (
         <View style={styles.textWrapper}>
-          <Text style={styles.text}>Gearspot</Text>
-          {showTagline ? <Text style={styles.tagline}>Vuokkaa lähelläsi</Text> : null}
+          <Text style={styles.text}>
+            <Text style={styles.textStrong}>Gear</Text>
+            <Text>Spot</Text>
+            <Text style={styles.dot}>.</Text>
+          </Text>
+          {showTagline ? <Text style={styles.tagline}>Vuokkaa lahellasi</Text> : null}
         </View>
       ) : null}
     </View>
@@ -33,10 +37,7 @@ const styles = StyleSheet.create({
   },
   innerShape: {
     backgroundColor: '#fff',
-    position: 'absolute',
-    width: '42%',
-    height: '42%',
-    borderRadius: 999,
+    position: 'absolute'
   },
   pinTip: {
     width: 0,
@@ -52,8 +53,15 @@ const styles = StyleSheet.create({
   },
   text: {
     fontSize: 22,
-    fontWeight: '800',
-    color: '#0f2f3d'
+    fontWeight: '500',
+    color: '#111111'
+  },
+  textStrong: {
+    fontWeight: '800'
+  },
+  dot: {
+    color: '#f4a12e',
+    fontWeight: '800'
   },
   tagline: {
     fontSize: 12,

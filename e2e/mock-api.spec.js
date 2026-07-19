@@ -34,13 +34,32 @@ test('login, booking and review flow works with auth token', async () => {
     body: JSON.stringify({
       productId,
       name: 'Flow Tester',
-      email: 'flow@example.com'
+      email: 'flow@example.com',
+      paymentMethod: 'visa',
+      cardLast4: '4242'
     })
   });
   expect(bookingRes.status).toBe(200);
 
   const bookingJson = await bookingRes.json();
   expect(bookingJson.productId).toBe(productId);
+  expect(bookingJson.paymentStatus).toBe('paid');
+  expect(bookingJson.bookingStatus).toBe('confirmed');
+
+  const refundRes = await fetch(`http://localhost:3000/api/bookings/${bookingJson.id}/refund`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ reason: 'changed_mind' })
+  });
+  expect(refundRes.status).toBe(200);
+
+  const refundJson = await refundRes.json();
+  expect(refundJson.paymentStatus).toBe('refunded');
+  expect(refundJson.bookingStatus).toBe('cancelled');
+  expect(refundJson.refundStatus).toBe('refunded');
 
   const reviewRes = await fetch('http://localhost:3000/api/reviews', {
     method: 'POST',
@@ -103,4 +122,34 @@ test('provider details and provider reviews flow works', async () => {
 
   const providerDetailsAfter = await fetch(`http://localhost:3000/api/providers/${providerId}`).then((r) => r.json());
   expect(providerDetailsAfter.reviews.some((review) => review.comment === 'Provider flow review')).toBeTruthy();
+});
+
+test('feedback report can be submitted without auth', async () => {
+  const feedbackRes = await fetch('http://localhost:3000/api/feedback-reports', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: 'Checkout button looked stuck',
+      routeName: 'Booking',
+      context: 'manual_feedback'
+    })
+  });
+
+  expect(feedbackRes.status).toBe(201);
+
+  const feedbackJson = await feedbackRes.json();
+  expect(feedbackJson.id).toBeTruthy();
+  expect(feedbackJson.status).toBe('new');
+
+  const feedbackUpdateRes = await fetch(`http://localhost:3000/api/feedback-reports/${feedbackJson.id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'in_progress', priority: 'high' })
+  });
+
+  expect(feedbackUpdateRes.status).toBe(200);
+
+  const feedbackUpdateJson = await feedbackUpdateRes.json();
+  expect(feedbackUpdateJson.status).toBe('in_progress');
+  expect(feedbackUpdateJson.priority).toBe('high');
 });

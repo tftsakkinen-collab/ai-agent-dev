@@ -2,8 +2,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const ENV_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || process.env.API_BASE_URL;
 const WEB_DEFAULT_BASE_URL =
-  typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.hostname}:3000`
+  typeof window !== 'undefined' && window.location
+    ? window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? `${window.location.protocol}//${window.location.hostname}:3000`
+      : `${window.location.protocol}//${window.location.host}`
     : 'http://localhost:3000';
 const BASE_URL = ENV_BASE_URL || WEB_DEFAULT_BASE_URL;
 
@@ -12,6 +14,22 @@ function buildUrl(path) {
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
   if (path.startsWith('/')) return `${BASE_URL}${path}`;
   return `${BASE_URL}/${path}`;
+}
+
+function getClientEnvironment() {
+  if (typeof window === 'undefined') {
+    return {
+      currentUrl: null,
+      userAgent: null,
+      viewport: null
+    };
+  }
+
+  return {
+    currentUrl: window.location?.href || null,
+    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+    viewport: window.innerWidth && window.innerHeight ? `${window.innerWidth}x${window.innerHeight}` : null
+  };
 }
 
 export async function getToken() {
@@ -58,4 +76,21 @@ export async function login(email) {
 
 export async function getProfile() {
   return fetchJson('/api/me');
+}
+
+export async function reportIssue({ message, reporterEmail, routeName, context, errorDetails } = {}) {
+  const metadata = getClientEnvironment();
+
+  return fetchJson('/api/feedback-reports', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message,
+      reporterEmail,
+      routeName,
+      context,
+      errorDetails,
+      ...metadata
+    })
+  });
 }

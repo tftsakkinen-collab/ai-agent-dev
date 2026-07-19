@@ -1,13 +1,26 @@
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 const app = express();
 const port = process.env.PORT || 3000;
 
+let kv = null;
+
+if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+  kv = require('@vercel/kv').kv;
+} else if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+  kv = require('@upstash/redis').Redis.fromEnv();
+}
+
+const STORE_KEYS = {
+  bookings: 'gearspot:bookings',
+  dynamicReviews: 'gearspot:dynamicReviews',
+  feedbackReports: 'gearspot:feedbackReports'
+};
+
 app.use(cors());
 app.use(express.json());
-
-// Mock session storage for logged-in users
-const sessions = {};
 
 // Simple mock data based on seeded profiles
 const providers = [
@@ -99,6 +112,68 @@ const categories = [
 
 // Simple in-memory bookings store
 let bookings = [];
+let dynamicReviews = [];
+const feedbackReports = [];
+const feedbackLogPath = path.join(__dirname, '..', 'logs', 'feedback-reports.ndjson');
+
+function persistFeedbackReport(report) {
+  try {
+    fs.mkdirSync(path.dirname(feedbackLogPath), { recursive: true });
+    fs.appendFileSync(feedbackLogPath, `${JSON.stringify(report)}\n`);
+  } catch (error) {
+    // Vercel serverless file system may be readonly; logging still happens via console.
+  }
+}
+
+async function readStoreList(key, memoryFallback) {
+  if (!kv) {
+    return memoryFallback;
+  }
+
+  const value = await kv.get(key);
+  return Array.isArray(value) ? value : [];
+}
+
+async function writeStoreList(key, items) {
+  if (!kv) {
+    return;
+  }
+
+  await kv.set(key, items);
+}
+
+async function readBookings() {
+  return readStoreList(STORE_KEYS.bookings, bookings);
+}
+
+async function saveBookings(items) {
+  bookings = items;
+  await writeStoreList(STORE_KEYS.bookings, items);
+}
+
+async function readDynamicReviews() {
+  return readStoreList(STORE_KEYS.dynamicReviews, dynamicReviews);
+}
+
+async function saveDynamicReviews(items) {
+  dynamicReviews = items;
+  await writeStoreList(STORE_KEYS.dynamicReviews, items);
+}
+
+async function readFeedbackReports() {
+  return readStoreList(STORE_KEYS.feedbackReports, feedbackReports);
+}
+
+async function saveFeedbackReports(items) {
+  feedbackReports.length = 0;
+  feedbackReports.push(...items);
+  await writeStoreList(STORE_KEYS.feedbackReports, items);
+}
+
+async function getBookingById(id) {
+  const allBookings = await readBookings();
+  return allBookings.find((booking) => booking.id === id);
+}
 
 function getProductById(id) {
   return products.find((product) => product.id === id);
@@ -108,8 +183,9 @@ function getProviderById(id) {
   return providers.find((provider) => provider.id === id);
 }
 
-function getReviewsFor(targetType, targetId) {
-  return reviews.filter((review) => review.targetType === targetType && review.targetId === targetId);
+async function getReviewsFor(targetType, targetId) {
+  const items = [...seededReviews, ...(await readDynamicReviews())];
+  return items.filter((review) => review.targetType === targetType && review.targetId === targetId);
 }
 
 function getAverageRating(items) {
@@ -121,8 +197,8 @@ function mapProducts(ids) {
   return ids.map((id) => getProductById(id)).filter(Boolean);
 }
 
-function buildProviderResponse(provider) {
-  const providerReviews = getReviewsFor('provider', provider.id);
+async function buildProviderResponse(provider) {
+  const providerReviews = await getReviewsFor('provider', provider.id);
   return {
     ...provider,
     reviews: providerReviews,
@@ -138,17 +214,18 @@ function buildProductResponse(product) {
   };
 }
 
-function buildLocationResponse(location) {
+async function buildLocationResponse(location) {
   const productsList = mapProducts(location.products);
+  const productReviewLists = await Promise.all(productsList.map((product) => getReviewsFor('product', product.id)));
   return {
     ...location,
     products: productsList,
-    rating: getAverageRating(productsList.flatMap((product) => getReviewsFor('product', product.id))),
+    rating: getAverageRating(productReviewLists.flat()),
     productCount: productsList.length
   };
 }
 
-const reviews = [
+const seededReviews = [
   {
     id: 'review-1',
     targetType: 'product',
@@ -181,41 +258,170 @@ const reviews = [
 app.post('/api/auth/login', (req, res) => {
   const { email } = req.body || {};
   if (!email) return res.status(400).json({ error: 'Email required' });
-  const token = `mock-token-${Date.now()}`;
-  sessions[token] = { email };
+  const token = `mock-token.${Buffer.from(email).toString('base64url')}`;
   return res.json({ token, email });
 });
 
 function getSession(req) {
   const auth = req.headers['authorization'];
   if (!auth || !auth.startsWith('Bearer ')) return null;
-  return sessions[auth.replace('Bearer ', '')] || null;
+  const token = auth.replace('Bearer ', '');
+  if (!token.startsWith('mock-token.')) return null;
+
+  try {
+    const encodedEmail = token.replace('mock-token.', '');
+    const email = Buffer.from(encodedEmail, 'base64url').toString('utf8');
+    if (!email) return null;
+    return { email };
+  } catch {
+    return null;
+  }
 }
 
-app.get('/api/bookings', (req, res) => {
+app.get('/api/me', (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
-  res.json(bookings.filter((booking) => booking.email === session.email));
+  return res.json({ email: session.email });
 });
 
-app.post('/api/bookings', (req, res) => {
+app.get('/api/bookings', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
-  const { productId, name, email } = req.body || {};
+  const allBookings = await readBookings();
+  res.json(allBookings.filter((booking) => booking.email === session.email));
+});
+
+app.post('/api/bookings', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  const { productId, name, email, paymentMethod, cardLast4 } = req.body || {};
   if (!productId || !name || !email) return res.status(400).json({ error: 'Missing fields' });
   const product = getProductById(productId);
   if (!product) return res.status(404).json({ error: 'Product not found' });
   const id = `bkg-${Date.now()}`;
+  const safeLast4 = String(cardLast4 || '').slice(-4);
   const booking = {
     id,
     productId,
     product,
     name,
     email,
+    bookingStatus: 'confirmed',
+    paymentStatus: 'paid',
+    refundStatus: 'not_requested',
+    paymentMethod: paymentMethod || 'mock_card',
+    paymentSummary: safeLast4 ? `Mock ${paymentMethod || 'card'} ending ${safeLast4}` : 'Mock card payment approved',
     createdAt: new Date().toISOString()
   };
-  bookings.push(booking);
+  booking.paidAt = booking.createdAt;
+  const allBookings = await readBookings();
+  allBookings.push(booking);
+  await saveBookings(allBookings);
   res.json(booking);
+});
+
+app.post('/api/bookings/:id/refund', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  if (booking.paymentStatus === 'refunded') {
+    return res.status(400).json({ error: 'Booking already refunded' });
+  }
+
+  const { reason } = req.body || {};
+  booking.paymentStatus = 'refunded';
+  booking.refundStatus = 'refunded';
+  booking.bookingStatus = 'cancelled';
+  booking.refundReason = reason || 'customer_request';
+  booking.refundedAt = new Date().toISOString();
+
+  await saveBookings(allBookings);
+
+  return res.json(booking);
+});
+
+app.post('/api/feedback-reports', async (req, res) => {
+  const {
+    message,
+    reporterEmail,
+    routeName,
+    currentUrl,
+    userAgent,
+    viewport,
+    context,
+    errorDetails,
+    priority,
+    status
+  } = req.body || {};
+
+  if (!message && !errorDetails) {
+    return res.status(400).json({ error: 'Message or errorDetails is required' });
+  }
+
+  const report = {
+    id: `feedback-${Date.now()}`,
+    message: message || 'Automatic error report',
+    reporterEmail: reporterEmail || null,
+    routeName: routeName || 'unknown',
+    currentUrl: currentUrl || null,
+    userAgent: userAgent || null,
+    viewport: viewport || null,
+    context: context || 'general_feedback',
+    errorDetails: errorDetails || null,
+    createdAt: new Date().toISOString(),
+    status: status || 'new',
+    priority: priority || 'medium'
+  };
+
+  const reports = await readFeedbackReports();
+  reports.unshift(report);
+  await saveFeedbackReports(reports);
+  persistFeedbackReport(report);
+  console.error('[feedback-report]', JSON.stringify(report));
+
+  return res.status(201).json({ id: report.id, status: report.status });
+});
+
+app.patch('/api/feedback-reports/:id', async (req, res) => {
+  const reports = await readFeedbackReports();
+  const report = reports.find((item) => item.id === req.params.id);
+  if (!report) {
+    return res.status(404).json({ error: 'Feedback report not found' });
+  }
+
+  const { status, priority } = req.body || {};
+  const allowedStatuses = ['new', 'in_progress', 'resolved'];
+  const allowedPriorities = ['low', 'medium', 'high'];
+
+  if (status && !allowedStatuses.includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+
+  if (priority && !allowedPriorities.includes(priority)) {
+    return res.status(400).json({ error: 'Invalid priority' });
+  }
+
+  if (status) {
+    report.status = status;
+  }
+
+  if (priority) {
+    report.priority = priority;
+  }
+
+  report.updatedAt = new Date().toISOString();
+  await saveFeedbackReports(reports);
+  return res.json(report);
+});
+
+app.get('/api/feedback-reports', async (req, res) => {
+  res.json(await readFeedbackReports());
 });
 
 app.get('/api/categories', (req, res) => {
@@ -232,29 +438,29 @@ app.get('/api/products/:id', (req, res) => {
   res.json(buildProductResponse(product));
 });
 
-app.get('/api/providers', (req, res) => {
-  res.json(providers.map(buildProviderResponse));
+app.get('/api/providers', async (req, res) => {
+  res.json(await Promise.all(providers.map(buildProviderResponse)));
 });
 
-app.get('/api/providers/:id', (req, res) => {
+app.get('/api/providers/:id', async (req, res) => {
   const provider = getProviderById(req.params.id);
   if (!provider) return res.status(404).json({ error: 'Not found' });
-  res.json(buildProviderResponse(provider));
+  res.json(await buildProviderResponse(provider));
 });
 
-app.get('/api/reviews', (req, res) => {
+app.get('/api/reviews', async (req, res) => {
   const { targetType, targetId } = req.query;
   if (!targetType || !targetId) return res.status(400).json({ error: 'targetType and targetId are required' });
-  res.json(reviews.filter((review) => review.targetType === targetType && review.targetId === targetId));
+  res.json(await getReviewsFor(targetType, targetId));
 });
 
-app.get('/api/reviews/renter', (req, res) => {
+app.get('/api/reviews/renter', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
-  res.json(reviews.filter((review) => review.targetType === 'renter' && review.targetId === session.email));
+  res.json(await getReviewsFor('renter', session.email));
 });
 
-app.post('/api/reviews', (req, res) => {
+app.post('/api/reviews', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
   const { targetType, targetId, rating, comment } = req.body || {};
@@ -269,11 +475,13 @@ app.post('/api/reviews', (req, res) => {
     comment: comment || '',
     createdAt: new Date().toISOString()
   };
+  const reviews = await readDynamicReviews();
   reviews.push(review);
+  await saveDynamicReviews(reviews);
   res.json(review);
 });
 
-app.get('/api/locations', (req, res) => {
+app.get('/api/locations', async (req, res) => {
   const query = (req.query.q || '').trim().toLowerCase();
 
   const filtered = locations.filter((location) => {
@@ -289,9 +497,13 @@ app.get('/api/locations', (req, res) => {
     return matchesLocation || matchesProduct;
   });
 
-  res.json(filtered.map(buildLocationResponse));
+  res.json(await Promise.all(filtered.map(buildLocationResponse)));
 });
 
-app.listen(port, () => {
-  console.log(`Mock API server running on http://localhost:${port}`);
-});
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`Mock API server running on http://localhost:${port}`);
+  });
+}
+
+module.exports = app;

@@ -58,6 +58,11 @@ Next steps
 - Add real backend endpoints and integrate payment/booking confirmations.
 - Replace mock-token flow with a real OAuth/JWT flow and secure storage for production.
 
+Vercel preview
+- Deployment-ready Vercel config lives in `vercel.json`.
+- Setup guide: `docs/VERCEL_SETUP.md`.
+- For stable preview data in serverless mode, attach Vercel KV to the project.
+
 Automated release helper
 - There's a helper script `prepare_release.sh` that runs unit tests, Playwright checks, builds web assets and triggers EAS builds when `EAS_TOKEN` is set. Example:
 

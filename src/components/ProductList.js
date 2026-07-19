@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, FlatList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 export default function ProductList({ products = [], navigation }) {
   const renderItem = ({ item }) => {
@@ -25,14 +25,18 @@ export default function ProductList({ products = [], navigation }) {
     );
   };
 
+  if (products.length === 0) {
+    return <Text style={styles.empty}>Ei tuotteita saatavilla.</Text>;
+  }
+
   return (
-    <FlatList
-      data={products}
-      keyExtractor={(i) => i.id}
-      renderItem={renderItem}
-      ListEmptyComponent={<Text style={styles.empty}>Ei tuotteita saatavilla.</Text>}
-      contentContainerStyle={products.length === 0 ? styles.emptyContainer : null}
-    />
+    <View>
+      {products.map((item) => (
+        <React.Fragment key={item.id}>
+          {renderItem({ item })}
+        </React.Fragment>
+      ))}
+    </View>
   );
 }
 
@@ -47,6 +51,5 @@ const styles = StyleSheet.create({
   price: { color: '#333', fontWeight: '700' },
   rating: { color: '#15948b', fontWeight: '700' },
   desc: { color: '#666', lineHeight: 20 },
-  empty: { textAlign: 'center', color: '#777', marginTop: 32 },
-  emptyContainer: { flex: 1, justifyContent: 'center' }
+  empty: { textAlign: 'center', color: '#777', marginTop: 32 }
 });
