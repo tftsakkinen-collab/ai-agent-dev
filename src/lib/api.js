@@ -171,3 +171,22 @@ export async function submitBookingReview(bookingId, actor, rating, comment) {
 export async function getBookingReviews(bookingId) {
   return fetchJson(`/api/bookings/${bookingId}/reviews`);
 }
+
+export async function getAdminDisputes(status = 'all') {
+  return fetchJson(`/api/admin/disputes?status=${encodeURIComponent(status)}`);
+}
+
+export async function resolveAdminDispute(bookingId, resolutionStatus, note, closeBooking = true) {
+  return fetchJson(`/api/admin/disputes/${bookingId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-admin-user': 'product-admin'
+    },
+    body: JSON.stringify({ resolutionStatus, note, closeBooking })
+  });
+}
+
+export async function getAuthAuditLogs(limit = 100) {
+  return fetchJson(`/api/admin/auth-audit-logs?limit=${encodeURIComponent(String(limit))}`);
+}

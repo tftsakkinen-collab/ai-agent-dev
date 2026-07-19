@@ -13,6 +13,7 @@ import RenterReviewScreen from './src/screens/RenterReviewScreen';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
 import ReportIssueButton from './src/components/ReportIssueButton';
 import FeedbackReportsScreen from './src/screens/FeedbackReportsScreen';
+import AdminOpsScreen from './src/screens/AdminOpsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -36,6 +37,7 @@ export default function App() {
           <Stack.Screen name="Booking" component={BookingScreen} />
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="FeedbackReports" component={FeedbackReportsScreen} />
+          <Stack.Screen name="AdminOps" component={AdminOpsScreen} />
           <Stack.Screen name="Auth" component={AuthScreen} />
           <Stack.Screen name="MapSearch" component={MapSearchScreen} />
         </Stack.Navigator>

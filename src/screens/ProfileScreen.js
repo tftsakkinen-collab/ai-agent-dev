@@ -317,6 +317,9 @@ export default function ProfileScreen({ navigation }) {
             <TouchableOpacity style={styles.secondaryActionButton} onPress={() => navigation.navigate('FeedbackReports')}>
               <Text style={styles.secondaryActionButtonText}>Katso virheraportit</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryActionButton} onPress={() => navigation.navigate('AdminOps')}>
+              <Text style={styles.secondaryActionButtonText}>Avaa admin-työkalut</Text>
+            </TouchableOpacity>
           </>
         )}
       </ScrollView>
