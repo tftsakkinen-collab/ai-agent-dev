@@ -1,98 +1,120 @@
 import React, { useEffect, useState } from 'react';
 import { SafeAreaView, View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
-import { fetchJson } from '../lib/api';
+import { fetchJson, submitBookingReview, getBookingReviews } from '../lib/api';
 
 export default function ReviewScreen({ navigation, route }) {
-  const { targetType, targetId, targetName } = route.params || {};
+  const { bookingId, actor } = route.params || {};
   const [reviews, setReviews] = useState([]);
   const [rating, setRating] = useState('5');
   const [comment, setComment] = useState('');
-  const [unauthorized, setUnauthorized] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchReviews();
-  }, []);
+  }, [bookingId]);
 
   const fetchReviews = async () => {
     try {
-      const data = await fetchJson(`/api/reviews?targetType=${targetType}&targetId=${targetId}`);
-      setReviews(data);
-      setUnauthorized(false);
+      const data = await getBookingReviews(bookingId);
+      setReviews(data || []);
     } catch (error) {
       setReviews([]);
-      setUnauthorized(error.message === 'Unauthorized');
+    } finally {
+      setLoading(false);
     }
   };
 
   const submitReview = async () => {
-    if (!rating) return Alert.alert('Valitse arvosana');
+    if (!rating || !comment.trim()) {
+      Alert.alert('Täytä kaikki kentät', 'Arvosana ja kommentti ovat pakollisia.');
+      return;
+    }
 
     try {
-      const result = await fetchJson('/api/reviews', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetType, targetId, rating: Number(rating), comment })
-      });
+      setSubmitting(true);
+      await submitBookingReview(bookingId, actor, Number(rating), comment.trim());
+      Alert.alert('Arvostelu lähetetty', 'Arvostelusi on tallennettu. Se julkaistaan kun molemmat osapuolet ovat jättäneet arvostelunsa.');
       setComment('');
       setRating('5');
       fetchReviews();
-      Alert.alert('Arvostelu lähetetty', `Kiitos arvostelusta ${result.reviewer}!`);
     } catch (error) {
-      if (error.message === 'Unauthorized') {
-        setUnauthorized(true);
-      } else {
-        Alert.alert('Arvostelu epäonnistui', error.message);
-      }
+      Alert.alert('Arvostelu epäonnistui', error.message);
+    } finally {
+      setSubmitting(false);
     }
   };
+
+  const visibleReviews = reviews.filter((r) => r.visibility === 'visible');
+  const hiddenReviews = reviews.filter((r) => r.visibility === 'hidden');
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container}>
         <ScreenHeader
           title="Arvostelut"
-          subtitle={targetName}
-          actionLabel="Kirjaudu"
-          onAction={() => navigation.navigate('Auth')}
+          subtitle={actor === 'owner' ? 'Arvioi vuokraaja' : 'Arvioi vuokraaja'}
         />
-        <FlatList
-          data={reviews}
-          keyExtractor={(item) => item.id}
-          ListEmptyComponent={<Text style={styles.emptyText}>Ei arvosteluja vielä.</Text>}
-          renderItem={({ item }) => (
-            <View style={styles.card}>
-              <Text style={styles.reviewer}>{item.reviewer}</Text>
-              <Text style={styles.rating}>Arvio: {item.rating}/5</Text>
-              <Text style={styles.comment}>{item.comment}</Text>
-            </View>
-          )}
-        />
-        <View style={styles.form}>
-          <Text style={styles.section}>Jätä oma arvostelu</Text>
+
+        {!loading && visibleReviews.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Julkaisitut arvostelut</Text>
+            {visibleReviews.map((review) => (
+              <View key={review.id} style={styles.reviewItem}>
+                <Text style={styles.reviewer}>{review.actor === 'owner' ? 'Omistaja' : 'Vuokraaja'}</Text>
+                <Text style={styles.rating}>⭐ {review.rating}/5</Text>
+                <Text style={styles.comment}>{review.comment}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {hiddenReviews.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Odottavia arvosteluja ({hiddenReviews.length})</Text>
+            <Text style={styles.metaText}>Arvostelut julkaistaan kun molemmat osapuolet ovat jättäneet omat arvostelunsa.</Text>
+          </View>
+        )}
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Jätä oma arvostelu</Text>
+          <Text style={styles.label}>Arvosana</Text>
+          <View style={styles.ratingRow}>
+            {[1, 2, 3, 4, 5].map((num) => (
+              <TouchableOpacity
+                key={num}
+                style={[styles.starButton, Number(rating) >= num && styles.starButtonActive]}
+                onPress={() => setRating(String(num))}
+              >
+                <Text style={styles.starButtonText}>⭐</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.ratingDisplay}>{rating}/5</Text>
+
+          <Text style={styles.label}>Kommentti</Text>
           <TextInput
             style={[styles.input, styles.commentInput]}
-            placeholder="Arvostelusi"
+            placeholder="Kerro kokemuksestasi..."
             value={comment}
             onChangeText={setComment}
+            editable={!submitting}
             multiline
           />
-          <TextInput
-            style={styles.input}
-            placeholder="Arvosana 1-5"
-            value={rating}
-            onChangeText={setRating}
-            keyboardType="numeric"
-          />
-          {unauthorized && <Text style={styles.error}>Sinun täytyy kirjautua ensin.</Text>}
-          <TouchableOpacity style={styles.primaryButton} onPress={submitReview}>
-            <Text style={styles.primaryButtonText}>Lähetä arvostelu</Text>
+
+          <TouchableOpacity
+            style={[styles.primaryButton, submitting && styles.buttonDisabled]}
+            onPress={submitReview}
+            disabled={submitting}
+          >
+            <Text style={styles.primaryButtonText}>{submitting ? 'Lähetetään...' : 'Lähetä arvostelu'}</Text>
           </TouchableOpacity>
-          {unauthorized && (
-            <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('Auth')}>
-              <Text style={styles.secondaryButtonText}>Kirjaudu</Text>
-            </TouchableOpacity>
-          )}
+        </View>
+
+        <View style={styles.infoCard}>
+          <Text style={styles.infoTitle}>ℹ️ Double-blind arvostelut</Text>
+          <Text style={styles.infoText}>Arvostelut ovat piilossa kunnes molemmat osapuolet ovat jättäneet omat arvostelunsä. Näin estetään kosto-arvostelut.</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -102,20 +124,25 @@ export default function ReviewScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f4f8fb' },
   container: { padding: 16, paddingBottom: 40 },
-  title: { fontSize: 24, fontWeight: '800', color: '#0f2f3d', marginBottom: 4 },
-  subtitle: { fontSize: 16, color: '#556b7a', marginBottom: 16 },
-  card: { backgroundColor: '#fff', borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#e3eaef', marginBottom: 12 },
+  card: { backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#e3eaef', marginBottom: 12 },
+  infoCard: { backgroundColor: '#f0f7f7', borderRadius: 16, borderWidth: 1, borderColor: '#d0e2df', padding: 16, marginTop: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0f2f3d', marginBottom: 10 },
+  reviewItem: { borderTopWidth: 1, borderTopColor: '#eef3f6', paddingTop: 10, marginTop: 10 },
   reviewer: { fontWeight: '700', marginBottom: 4, fontSize: 15, color: '#0f2f3d' },
-  rating: { marginBottom: 8, color: '#15948b' },
+  rating: { marginBottom: 4, color: '#15948b', fontWeight: '700' },
   comment: { color: '#556b7a', lineHeight: 20 },
-  form: { marginTop: 22 },
-  section: { fontSize: 18, fontWeight: '700', marginBottom: 12, color: '#0f2f3d' },
-  input: { borderWidth: 1, borderColor: '#d5dde3', borderRadius: 14, padding: 12, backgroundColor: '#f8fbfc', marginBottom: 12 },
+  label: { fontWeight: '700', color: '#0f2f3d', marginBottom: 8, marginTop: 12 },
+  ratingRow: { flexDirection: 'row', marginBottom: 8 },
+  starButton: { marginRight: 8, padding: 8, borderRadius: 8, backgroundColor: '#f0f4f7' },
+  starButtonActive: { backgroundColor: '#ffd700' },
+  starButtonText: { fontSize: 24 },
+  ratingDisplay: { textAlign: 'center', fontSize: 16, fontWeight: '700', color: '#15948b', marginBottom: 12 },
+  input: { borderWidth: 1, borderColor: '#d5dde3', borderRadius: 12, padding: 12, backgroundColor: '#fff', color: '#000', marginBottom: 12 },
   commentInput: { minHeight: 100, textAlignVertical: 'top' },
-  error: { color: '#c0392b', marginBottom: 12 },
-  primaryButton: { backgroundColor: '#15948b', paddingVertical: 14, borderRadius: 16, alignItems: 'center' },
+  metaText: { color: '#556b7a', lineHeight: 20 },
+  primaryButton: { backgroundColor: '#15948b', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
   primaryButtonText: { color: '#fff', fontWeight: '700' },
-  secondaryButton: { marginTop: 10, borderColor: '#15948b', borderWidth: 1, paddingVertical: 14, borderRadius: 16, alignItems: 'center' },
-  secondaryButtonText: { color: '#15948b', fontWeight: '700' },
-  emptyText: { color: '#777', textAlign: 'center', marginVertical: 16 }
+  buttonDisabled: { opacity: 0.6 },
+  infoTitle: { fontWeight: '800', color: '#0e6d66', marginBottom: 8 },
+  infoText: { color: '#556b7a', lineHeight: 20 }
 });

@@ -1812,6 +1812,179 @@ app.post('/api/auth/magic-link/verify', async (req, res) => {
   return res.status(400).json({ error: 'Magic-link verification not available with current provider' });
 });
 
+app.get('/api/bookings/:id', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const booking = await getBookingById(req.params.id);
+  if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+  const isRenter = booking.renterUserId === session.userId;
+  const isOwner = booking.product?.providerId === buildOwnerProviderId(session.email) || booking.ownerEmail === session.email;
+
+  if (!isRenter && !isOwner && session.email !== 'admin@gearspot') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const sanitized = { ...booking };
+  if (!isOwner && sanitized.handoffCode) {
+    sanitized.handoffCode = '***';
+  }
+  
+  return res.json(sanitized);
+});
+
+app.post('/api/bookings/:id/handoff/confirm', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { actor } = req.body || {};
+  if (!['owner', 'renter'].includes(actor)) {
+    return res.status(400).json({ error: 'actor must be owner or renter' });
+  }
+
+  const booking = await getBookingById(req.params.id);
+  if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+  if (actor === 'owner') {
+    if (booking.ownerEmail !== session.email && booking.product?.providerId !== buildOwnerProviderId(session.email)) {
+      return res.status(403).json({ error: 'Not the owner' });
+    }
+    booking.handoffConfirmedByOwnerAt = new Date().toISOString();
+  } else {
+    if (booking.renterUserId !== session.userId) {
+      return res.status(403).json({ error: 'Not the renter' });
+    }
+    booking.handoffConfirmedByRenterAt = new Date().toISOString();
+  }
+
+  if (booking.handoffConfirmedByOwnerAt && booking.handoffConfirmedByRenterAt) {
+    booking.bookingStage = BOOKING_STAGE.IN_USE;
+  }
+
+  await appendAuthAuditLog('booking_handoff_confirmed', req, {
+    bookingId: booking.id,
+    actor
+  });
+
+  await saveBookings(booking);
+  return res.json(booking);
+});
+
+app.post('/api/bookings/:id/evidence', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { phase, photos } = req.body || {};
+  if (!['before', 'after'].includes(phase) || !Array.isArray(photos)) {
+    return res.status(400).json({ error: 'phase (before|after) and photos array required' });
+  }
+
+  const booking = await getBookingById(req.params.id);
+  if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+  const isRenter = booking.renterUserId === session.userId;
+  const isOwner = booking.product?.providerId === buildOwnerProviderId(session.email) || booking.ownerEmail === session.email;
+
+  if (phase === 'before' && !isOwner) {
+    return res.status(403).json({ error: 'Only owner can submit before photos' });
+  }
+  if (phase === 'after' && !isRenter) {
+    return res.status(403).json({ error: 'Only renter can submit after photos' });
+  }
+
+  if (phase === 'before') {
+    booking.evidencePhotosBefore = photos.slice(0, 10);
+  } else {
+    booking.evidencePhotosAfter = photos.slice(0, 10);
+  }
+
+  await saveBookings(booking);
+  return res.json({ ok: true, message: `${phase === 'before' ? 'Before' : 'After'} photos stored` });
+});
+
+app.post('/api/bookings/:id/reviews', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { actor, rating, comment } = req.body || {};
+  if (!['owner', 'renter'].includes(actor) || !rating || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: 'actor, rating (1-5), and comment required' });
+  }
+
+  const booking = await getBookingById(req.params.id);
+  if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+  if (booking.bookingStage !== BOOKING_STAGE.COMPLETED) {
+    return res.status(400).json({ error: 'Booking must be completed before review' });
+  }
+
+  const now = new Date().toISOString();
+  let shouldReveal = false;
+
+  if (actor === 'owner') {
+    if (booking.product?.providerId !== buildOwnerProviderId(session.email) && booking.ownerEmail !== session.email) {
+      return res.status(403).json({ error: 'Not the owner' });
+    }
+    booking.reviewFlow.ownerReview = { rating, comment };
+    booking.reviewFlow.ownerReviewSubmittedAt = now;
+  } else {
+    if (booking.renterUserId !== session.userId) {
+      return res.status(403).json({ error: 'Not the renter' });
+    }
+    booking.reviewFlow.renterReview = { rating, comment };
+    booking.reviewFlow.renterReviewSubmittedAt = now;
+  }
+
+  if (booking.reviewFlow.ownerReviewSubmittedAt && booking.reviewFlow.renterReviewSubmittedAt) {
+    shouldReveal = true;
+    booking.reviewFlow.visibility = 'visible';
+  }
+
+  await appendAuthAuditLog('booking_review_submitted', req, {
+    bookingId: booking.id,
+    actor,
+    rating
+  });
+
+  await saveBookings(booking);
+  return res.json({
+    ok: true,
+    message: 'Review stored',
+    visibility: booking.reviewFlow.visibility,
+    revealed: shouldReveal
+  });
+});
+
+app.get('/api/bookings/:id/reviews', async (req, res) => {
+  const booking = await getBookingById(req.params.id);
+  if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+  const reviews = [];
+
+  if (booking.reviewFlow.ownerReview) {
+    reviews.push({
+      id: `rev-owner-${booking.id}`,
+      actor: 'owner',
+      rating: booking.reviewFlow.ownerReview.rating,
+      comment: booking.reviewFlow.ownerReview.comment,
+      visibility: booking.reviewFlow.visibility
+    });
+  }
+
+  if (booking.reviewFlow.renterReview) {
+    reviews.push({
+      id: `rev-renter-${booking.id}`,
+      actor: 'renter',
+      rating: booking.reviewFlow.renterReview.rating,
+      comment: booking.reviewFlow.renterReview.comment,
+      visibility: booking.reviewFlow.visibility
+    });
+  }
+
+  return res.json(reviews);
+});
+
 app.use((error, req, res, next) => {
   console.error(`[api] Unhandled error requestId=${req.requestId || 'unknown'}`, error);
   if (res.headersSent) {

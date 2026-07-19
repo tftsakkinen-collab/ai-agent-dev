@@ -290,3 +290,23 @@ export async function verifyMagicLink(token, email = null) {
   }
   return json;
 }
+
+export async function getBooking(bookingId) {
+  return fetchJson(`/api/bookings/${bookingId}`);
+}
+
+export async function confirmBookingHandoff(bookingId, actor) {
+  return fetchJson(`/api/bookings/${bookingId}/handoff/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ actor })
+  });
+}
+
+export async function submitBookingEvidence(bookingId, phase, photos) {
+  return fetchJson(`/api/bookings/${bookingId}/evidence`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phase, photos })
+  });
+}
