@@ -119,3 +119,55 @@ export async function reportIssue({ message, reporterEmail, routeName, context, 
     })
   });
 }
+
+export async function updateBookingLifecycle(bookingId, action, payload = {}) {
+  return fetchJson(`/api/bookings/${bookingId}/${action}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function setupBookingDeposit(bookingId, depositAmount) {
+  return fetchJson(`/api/bookings/${bookingId}/deposit/setup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ depositAmount })
+  });
+}
+
+export async function releaseBookingDeposit(bookingId) {
+  return fetchJson(`/api/bookings/${bookingId}/deposit/release`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+}
+
+export async function claimBookingDeposit(bookingId, amount, reason) {
+  return fetchJson(`/api/bookings/${bookingId}/deposit/claim`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount, reason })
+  });
+}
+
+export async function uploadBookingEvidence(bookingId, phase, photos) {
+  return fetchJson(`/api/bookings/${bookingId}/evidence`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phase, photos })
+  });
+}
+
+export async function submitBookingReview(bookingId, actor, rating, comment) {
+  return fetchJson(`/api/bookings/${bookingId}/reviews`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ actor, rating, comment })
+  });
+}
+
+export async function getBookingReviews(bookingId) {
+  return fetchJson(`/api/bookings/${bookingId}/reviews`);
+}
