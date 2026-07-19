@@ -24,6 +24,18 @@ const STORE_KEYS = {
   feedbackReports: 'gearspot:feedbackReports'
 };
 
+const BOOKING_STAGE = {
+  APPROVED: 'approved',
+  AWAITING_HANDOFF: 'awaiting_handoff',
+  IN_USE: 'in_use',
+  AWAITING_RETURN: 'awaiting_return',
+  RETURNED: 'returned',
+  COMPLETED: 'completed',
+  DISPUTED: 'disputed'
+};
+
+const ALLOWED_HANDOFF_METHODS = ['lockbox_code', 'in_person'];
+
 app.use(cors());
 app.use(express.json());
 
@@ -178,6 +190,30 @@ async function saveFeedbackReports(items) {
 async function getBookingById(id) {
   const allBookings = await readBookings();
   return allBookings.find((booking) => booking.id === id);
+}
+
+function isValidTransition(from, to) {
+  const transitions = {
+    [BOOKING_STAGE.APPROVED]: [BOOKING_STAGE.AWAITING_HANDOFF, BOOKING_STAGE.DISPUTED],
+    [BOOKING_STAGE.AWAITING_HANDOFF]: [BOOKING_STAGE.IN_USE, BOOKING_STAGE.DISPUTED],
+    [BOOKING_STAGE.IN_USE]: [BOOKING_STAGE.AWAITING_RETURN, BOOKING_STAGE.DISPUTED],
+    [BOOKING_STAGE.AWAITING_RETURN]: [BOOKING_STAGE.RETURNED, BOOKING_STAGE.DISPUTED],
+    [BOOKING_STAGE.RETURNED]: [BOOKING_STAGE.COMPLETED, BOOKING_STAGE.DISPUTED],
+    [BOOKING_STAGE.COMPLETED]: [],
+    [BOOKING_STAGE.DISPUTED]: [BOOKING_STAGE.COMPLETED]
+  };
+
+  return Boolean(transitions[from]?.includes(to));
+}
+
+function transitionBookingStage(booking, nextStage) {
+  const current = booking.bookingStage || BOOKING_STAGE.APPROVED;
+  if (!isValidTransition(current, nextStage)) {
+    return { ok: false, error: `Invalid stage transition: ${current} -> ${nextStage}` };
+  }
+  booking.bookingStage = nextStage;
+  booking.bookingStageUpdatedAt = new Date().toISOString();
+  return { ok: true };
 }
 
 function getProductById(id) {
@@ -435,10 +471,19 @@ app.post('/api/bookings', async (req, res) => {
     email: session.email,
     renterUserId: session.userId,
     bookingStatus: 'confirmed',
+    bookingStage: BOOKING_STAGE.APPROVED,
     paymentStatus: 'paid',
     refundStatus: 'not_requested',
     paymentMethod: paymentMethod || 'mock_card',
     paymentSummary: safeLast4 ? `Mock ${paymentMethod || 'card'} ending ${safeLast4}` : 'Mock card payment approved',
+    handoffMethod: 'in_person',
+    handoffCode: null,
+    ownerHandoffConfirmedAt: null,
+    renterHandoffConfirmedAt: null,
+    returnRequestedAt: null,
+    returnedAt: null,
+    completedAt: null,
+    disputedAt: null,
     createdAt: new Date().toISOString()
   };
   booking.paidAt = booking.createdAt;
@@ -471,6 +516,157 @@ app.post('/api/bookings/:id/refund', async (req, res) => {
 
   await saveBookings(allBookings);
 
+  return res.json(booking);
+});
+
+app.post('/api/bookings/:id/handoff/setup', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  const { handoffMethod, handoffCode } = req.body || {};
+  if (!ALLOWED_HANDOFF_METHODS.includes(handoffMethod)) {
+    return res.status(400).json({ error: 'Invalid handoffMethod' });
+  }
+
+  const move = transitionBookingStage(booking, BOOKING_STAGE.AWAITING_HANDOFF);
+  if (!move.ok && booking.bookingStage !== BOOKING_STAGE.AWAITING_HANDOFF) {
+    return res.status(400).json({ error: move.error });
+  }
+
+  booking.handoffMethod = handoffMethod;
+  booking.handoffCode = handoffMethod === 'lockbox_code' ? String(handoffCode || '').trim() : null;
+  booking.handoffConfiguredAt = new Date().toISOString();
+  await saveBookings(allBookings);
+
+  return res.json(booking);
+});
+
+app.post('/api/bookings/:id/handoff/confirm', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  if (booking.bookingStage !== BOOKING_STAGE.AWAITING_HANDOFF && booking.bookingStage !== BOOKING_STAGE.IN_USE) {
+    return res.status(400).json({ error: 'Booking is not in handoff stage' });
+  }
+
+  const { actor } = req.body || {};
+  if (!['owner', 'renter'].includes(actor)) {
+    return res.status(400).json({ error: 'actor must be owner or renter' });
+  }
+
+  const now = new Date().toISOString();
+  if (actor === 'owner') booking.ownerHandoffConfirmedAt = now;
+  if (actor === 'renter') booking.renterHandoffConfirmedAt = now;
+
+  if (booking.ownerHandoffConfirmedAt && booking.renterHandoffConfirmedAt && booking.bookingStage !== BOOKING_STAGE.IN_USE) {
+    const move = transitionBookingStage(booking, BOOKING_STAGE.IN_USE);
+    if (!move.ok) {
+      return res.status(400).json({ error: move.error });
+    }
+    booking.handoffStartedAt = now;
+  }
+
+  await saveBookings(allBookings);
+  return res.json(booking);
+});
+
+app.post('/api/bookings/:id/return/request', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  const move = transitionBookingStage(booking, BOOKING_STAGE.AWAITING_RETURN);
+  if (!move.ok) {
+    return res.status(400).json({ error: move.error });
+  }
+
+  booking.returnRequestedAt = new Date().toISOString();
+  await saveBookings(allBookings);
+  return res.json(booking);
+});
+
+app.post('/api/bookings/:id/return/confirm', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  const move = transitionBookingStage(booking, BOOKING_STAGE.RETURNED);
+  if (!move.ok) {
+    return res.status(400).json({ error: move.error });
+  }
+
+  booking.returnedAt = new Date().toISOString();
+  await saveBookings(allBookings);
+  return res.json(booking);
+});
+
+app.post('/api/bookings/:id/complete', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  const move = transitionBookingStage(booking, BOOKING_STAGE.COMPLETED);
+  if (!move.ok) {
+    return res.status(400).json({ error: move.error });
+  }
+
+  booking.completedAt = new Date().toISOString();
+  booking.bookingStatus = 'completed';
+  await saveBookings(allBookings);
+  return res.json(booking);
+});
+
+app.post('/api/bookings/:id/dispute', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  if (booking.bookingStage === BOOKING_STAGE.COMPLETED) {
+    return res.status(400).json({ error: 'Completed booking cannot be disputed' });
+  }
+
+  if (booking.bookingStage !== BOOKING_STAGE.DISPUTED) {
+    const move = transitionBookingStage(booking, BOOKING_STAGE.DISPUTED);
+    if (!move.ok) {
+      return res.status(400).json({ error: move.error });
+    }
+  }
+
+  booking.disputedAt = new Date().toISOString();
+  booking.disputeReason = String(req.body?.reason || 'unspecified').slice(0, 300);
+  await saveBookings(allBookings);
   return res.json(booking);
 });
 
