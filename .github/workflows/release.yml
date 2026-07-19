@@ -28,20 +28,10 @@ jobs:
       - name: Validate required release secrets
         env:
           EAS_TOKEN: ${{ secrets.EAS_TOKEN }}
-          ANDROID_KEYSTORE_JSON: ${{ secrets.ANDROID_KEYSTORE_JSON }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          APPLE_CREDENTIALS: ${{ secrets.APPLE_CREDENTIALS }}
         run: |
           missing=()
 
           [[ -z "${EAS_TOKEN:-}" ]] && missing+=("EAS_TOKEN")
-          [[ -z "${ANDROID_KEYSTORE_JSON:-}" ]] && missing+=("ANDROID_KEYSTORE_JSON")
-          [[ -z "${ANDROID_KEYSTORE_PASSWORD:-}" ]] && missing+=("ANDROID_KEYSTORE_PASSWORD")
-          [[ -z "${ANDROID_KEY_ALIAS:-}" ]] && missing+=("ANDROID_KEY_ALIAS")
-          [[ -z "${ANDROID_KEY_PASSWORD:-}" ]] && missing+=("ANDROID_KEY_PASSWORD")
-          [[ -z "${APPLE_CREDENTIALS:-}" ]] && missing+=("APPLE_CREDENTIALS")
 
           if (( ${#missing[@]} > 0 )); then
             echo "::error::Missing required repository secrets: ${missing[*]}"

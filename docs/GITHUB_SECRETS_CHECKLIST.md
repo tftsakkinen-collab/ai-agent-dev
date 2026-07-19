@@ -10,6 +10,8 @@ Luo seuraavat salaisuudet repossa: Settings -> Secrets and variables -> Actions 
   - Expo EAS access token CI-buildien ajamiseen.
   - Luo: `npx eas-cli login` -> `npx eas-cli whoami` -> luo token Expo-dashboardissa.
 
+## 1.1 Valinnaiset (vain jos et kayta EAS managed credentials -mallia)
+
 - `ANDROID_KEYSTORE_JSON`
   - Base64-muotoinen Android keystore tai EAS managed credentials -viite.
   - Jos kaytat omaa keystorea, tallenna vain salattu/base64-arvo.
@@ -60,7 +62,7 @@ EAS_TOKEN=${{ secrets.EAS_TOKEN }} VERCEL_TOKEN=${{ secrets.VERCEL_TOKEN }} ./pr
 
 ## 5. Rollout check (quick pass/fail)
 
-- [ ] Kaikki required secrets olemassa.
+- [ ] Vahintaan `EAS_TOKEN` on olemassa.
 - [ ] CI-job menee vihreaksi branchissa.
 - [ ] Android production build triggeroitu onnistuneesti.
 - [ ] iOS production build triggeroitu onnistuneesti.
