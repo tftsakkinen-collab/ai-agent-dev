@@ -7,8 +7,13 @@ const app = express();
 const port = process.env.PORT || 3000;
 const authSecret = process.env.AUTH_SECRET || 'gearspot-dev-auth-secret';
 const exposeAuthCode = process.env.AUTH_EXPOSE_CODE !== 'false';
+const adminApiKey = process.env.ADMIN_API_KEY || '';
 const AUTH_CODE_TTL_MS = 10 * 60 * 1000;
+const AUTH_CODE_COOLDOWN_MS = 30 * 1000;
+const AUTH_REQUEST_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_REQUEST_MAX_PER_WINDOW = 6;
 const pendingLoginCodes = new Map();
+const authRequestTracker = new Map();
 
 let kv = null;
 
@@ -21,7 +26,8 @@ if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
 const STORE_KEYS = {
   bookings: 'gearspot:bookings',
   dynamicReviews: 'gearspot:dynamicReviews',
-  feedbackReports: 'gearspot:feedbackReports'
+  feedbackReports: 'gearspot:feedbackReports',
+  authAuditLogs: 'gearspot:authAuditLogs'
 };
 
 const BOOKING_STAGE = {
@@ -134,6 +140,7 @@ const categories = [
 let bookings = [];
 let dynamicReviews = [];
 const feedbackReports = [];
+const authAuditLogs = [];
 const feedbackLogPath = path.join(__dirname, '..', 'logs', 'feedback-reports.ndjson');
 
 function persistFeedbackReport(report) {
@@ -193,6 +200,17 @@ async function saveFeedbackReports(items) {
   feedbackReports.length = 0;
   feedbackReports.push(...snapshot);
   await writeStoreList(STORE_KEYS.feedbackReports, snapshot);
+}
+
+async function readAuthAuditLogs() {
+  return readStoreList(STORE_KEYS.authAuditLogs, authAuditLogs);
+}
+
+async function saveAuthAuditLogs(items) {
+  const snapshot = Array.isArray(items) ? [...items] : [];
+  authAuditLogs.length = 0;
+  authAuditLogs.push(...snapshot);
+  await writeStoreList(STORE_KEYS.authAuditLogs, snapshot);
 }
 
 async function getBookingById(id) {
@@ -333,6 +351,39 @@ function normalizeEmail(rawEmail) {
   return String(rawEmail || '').trim().toLowerCase();
 }
 
+function getClientIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  if (forwarded) {
+    return forwarded;
+  }
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+async function appendAuthAuditLog(event, req, details = {}) {
+  const logs = await readAuthAuditLogs();
+  const entry = {
+    id: `auth-audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    event,
+    ip: getClientIp(req),
+    timestamp: new Date().toISOString(),
+    ...details
+  };
+  logs.unshift(entry);
+  await saveAuthAuditLogs(logs.slice(0, 500));
+}
+
+function isAdminAuthorized(req) {
+  if (!adminApiKey) {
+    return true;
+  }
+  const provided = String(req.headers['x-admin-key'] || '');
+  return provided && provided === adminApiKey;
+}
+
+function getAdminActor(req) {
+  return String(req.headers['x-admin-user'] || 'admin').slice(0, 100);
+}
+
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
@@ -407,14 +458,87 @@ function issueLoginCode(email) {
   return code;
 }
 
-app.post('/api/auth/request-code', (req, res) => {
+function evaluateAuthRequestPolicy(req, email) {
+  const now = Date.now();
+  const key = `${getClientIp(req)}|${email}`;
+  const current = authRequestTracker.get(key) || {
+    windowStartedAt: now,
+    count: 0,
+    lastRequestedAt: 0,
+    blockedUntil: 0
+  };
+
+  if (current.blockedUntil > now) {
+    return {
+      ok: false,
+      reason: 'blocked',
+      retryAfterSeconds: Math.ceil((current.blockedUntil - now) / 1000),
+      key,
+      state: current
+    };
+  }
+
+  if (now - current.windowStartedAt > AUTH_REQUEST_WINDOW_MS) {
+    current.windowStartedAt = now;
+    current.count = 0;
+  }
+
+  const cooldownRemaining = AUTH_CODE_COOLDOWN_MS - (now - current.lastRequestedAt);
+  if (current.lastRequestedAt && cooldownRemaining > 0) {
+    return {
+      ok: false,
+      reason: 'cooldown',
+      retryAfterSeconds: Math.ceil(cooldownRemaining / 1000),
+      key,
+      state: current
+    };
+  }
+
+  if (current.count >= AUTH_REQUEST_MAX_PER_WINDOW) {
+    current.blockedUntil = now + AUTH_REQUEST_WINDOW_MS;
+    authRequestTracker.set(key, current);
+    return {
+      ok: false,
+      reason: 'rate_limit',
+      retryAfterSeconds: Math.ceil(AUTH_REQUEST_WINDOW_MS / 1000),
+      key,
+      state: current
+    };
+  }
+
+  current.count += 1;
+  current.lastRequestedAt = now;
+  authRequestTracker.set(key, current);
+  return { ok: true, key, state: current };
+}
+
+app.post('/api/auth/request-code', async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   if (!isValidEmail(email)) {
+    await appendAuthAuditLog('request_code_invalid_email', req, { email });
     return res.status(400).json({ error: 'Valid email required' });
+  }
+
+  const policy = evaluateAuthRequestPolicy(req, email);
+  if (!policy.ok) {
+    await appendAuthAuditLog('request_code_blocked', req, {
+      email,
+      reason: policy.reason,
+      retryAfterSeconds: policy.retryAfterSeconds
+    });
+    return res.status(429).json({
+      error: 'Too many requests. Please wait before requesting a new code.',
+      reason: policy.reason,
+      retryAfterSeconds: policy.retryAfterSeconds
+    });
   }
 
   const code = issueLoginCode(email);
   console.info(`[auth] Login code for ${email}: ${code}`);
+  await appendAuthAuditLog('request_code_sent', req, {
+    email,
+    expiresInSeconds: Math.floor(AUTH_CODE_TTL_MS / 1000)
+  });
 
   const response = {
     ok: true,
@@ -428,32 +552,37 @@ app.post('/api/auth/request-code', (req, res) => {
   return res.json(response);
 });
 
-app.post('/api/auth/verify-code', (req, res) => {
+app.post('/api/auth/verify-code', async (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const code = String(req.body?.code || '').trim();
 
   if (!isValidEmail(email) || code.length !== 6) {
+    await appendAuthAuditLog('verify_code_invalid_payload', req, { email });
     return res.status(400).json({ error: 'Valid email and 6-digit code required' });
   }
 
   cleanupExpiredCodes();
   const entry = pendingLoginCodes.get(email);
   if (!entry) {
+    await appendAuthAuditLog('verify_code_missing_or_expired', req, { email });
     return res.status(400).json({ error: 'Code expired or not requested' });
   }
 
   if (entry.attempts >= 5) {
     pendingLoginCodes.delete(email);
+    await appendAuthAuditLog('verify_code_locked', req, { email });
     return res.status(429).json({ error: 'Too many attempts. Request a new code.' });
   }
 
   if (entry.code !== code) {
     entry.attempts += 1;
+    await appendAuthAuditLog('verify_code_failed', req, { email, attempts: entry.attempts });
     return res.status(400).json({ error: 'Invalid code' });
   }
 
   pendingLoginCodes.delete(email);
   const token = buildAuthToken(email);
+  await appendAuthAuditLog('verify_code_success', req, { email });
   return res.json({ token, email, userId: buildUserIdFromEmail(email) });
 });
 
@@ -715,6 +844,74 @@ app.post('/api/bookings/:id/dispute', async (req, res) => {
 
   booking.disputedAt = new Date().toISOString();
   booking.disputeReason = String(req.body?.reason || 'unspecified').slice(0, 300);
+  booking.disputeResolutionStatus = 'open';
+  booking.disputeResolutionNote = null;
+  booking.disputeResolvedAt = null;
+  booking.disputeResolvedBy = null;
+  await saveBookings(allBookings);
+  return res.json(getSafeBookingView(booking));
+});
+
+app.get('/api/admin/auth-audit-logs', async (req, res) => {
+  if (!isAdminAuthorized(req)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const limit = Math.min(Math.max(Number(req.query.limit || 100), 1), 500);
+  const logs = await readAuthAuditLogs();
+  return res.json(logs.slice(0, limit));
+});
+
+app.get('/api/admin/disputes', async (req, res) => {
+  if (!isAdminAuthorized(req)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const status = String(req.query.status || 'all');
+  const allBookings = await readBookings();
+  const disputes = allBookings.filter((booking) => booking.bookingStage === BOOKING_STAGE.DISPUTED || booking.disputeResolutionStatus);
+
+  const filtered = status === 'all' ? disputes : disputes.filter((booking) => String(booking.disputeResolutionStatus || 'open') === status);
+  return res.json(filtered.map(getSafeBookingView));
+});
+
+app.patch('/api/admin/disputes/:id', async (req, res) => {
+  if (!isAdminAuthorized(req)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  if (booking.bookingStage !== BOOKING_STAGE.DISPUTED && !booking.disputeResolutionStatus) {
+    return res.status(400).json({ error: 'Booking is not in dispute state' });
+  }
+
+  const resolutionStatus = String(req.body?.resolutionStatus || '').trim();
+  const note = String(req.body?.note || '').trim();
+  const closeBooking = Boolean(req.body?.closeBooking);
+
+  if (!['resolved', 'rejected'].includes(resolutionStatus)) {
+    return res.status(400).json({ error: 'resolutionStatus must be resolved or rejected' });
+  }
+
+  booking.disputeResolutionStatus = resolutionStatus;
+  booking.disputeResolutionNote = note || null;
+  booking.disputeResolvedAt = new Date().toISOString();
+  booking.disputeResolvedBy = getAdminActor(req);
+
+  if (closeBooking && booking.bookingStage === BOOKING_STAGE.DISPUTED) {
+    const move = transitionBookingStage(booking, BOOKING_STAGE.COMPLETED);
+    if (!move.ok) {
+      return res.status(400).json({ error: move.error });
+    }
+    booking.bookingStatus = 'completed';
+    booking.completedAt = booking.completedAt || new Date().toISOString();
+  }
+
   await saveBookings(allBookings);
   return res.json(getSafeBookingView(booking));
 });

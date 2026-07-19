@@ -399,3 +399,91 @@ test('double-blind booking reviews stay hidden until both are submitted', async 
   expect(visibleRead.visibility).toBe('visible');
   expect(visibleRead.reviews.length).toBe(2);
 });
+
+test('request-code endpoint enforces cooldown and records audit log', async () => {
+  const email = `cooldown-${Date.now()}@example.com`;
+
+  const first = await fetch('http://localhost:3000/api/auth/request-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email })
+  });
+  expect(first.status).toBe(200);
+
+  const second = await fetch('http://localhost:3000/api/auth/request-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email })
+  });
+  expect(second.status).toBe(429);
+  const secondJson = await second.json();
+  expect(secondJson.reason).toBeTruthy();
+  expect(secondJson.retryAfterSeconds).toBeGreaterThan(0);
+
+  const logsRes = await fetch('http://localhost:3000/api/admin/auth-audit-logs?limit=20');
+  expect(logsRes.status).toBe(200);
+  const logs = await logsRes.json();
+  expect(Array.isArray(logs)).toBeTruthy();
+  expect(logs.some((entry) => entry.email === email && entry.event === 'request_code_sent')).toBeTruthy();
+});
+
+test('admin can resolve disputed booking', async () => {
+  const loginRes = await fetch('http://localhost:3000/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: `dispute-${Date.now()}@example.com` })
+  });
+  expect(loginRes.status).toBe(200);
+  const loginJson = await loginRes.json();
+
+  const products = await fetch('http://localhost:3000/api/products').then((r) => r.json());
+  const productId = products[0].id;
+
+  const bookingRes = await fetch('http://localhost:3000/api/bookings', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      productId,
+      name: 'Dispute Tester',
+      paymentMethod: 'visa',
+      cardLast4: '9999'
+    })
+  });
+  expect(bookingRes.status).toBe(200);
+  const booking = await bookingRes.json();
+
+  const disputeRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/dispute`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${loginJson.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ reason: 'visible_damage' })
+  });
+  expect(disputeRes.status).toBe(200);
+  const disputed = await disputeRes.json();
+  expect(disputed.bookingStage).toBe('disputed');
+  expect(disputed.disputeResolutionStatus).toBe('open');
+
+  const listRes = await fetch('http://localhost:3000/api/admin/disputes?status=open');
+  expect(listRes.status).toBe(200);
+  const openDisputes = await listRes.json();
+  expect(openDisputes.some((item) => item.id === booking.id)).toBeTruthy();
+
+  const resolveRes = await fetch(`http://localhost:3000/api/admin/disputes/${booking.id}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-admin-user': 'qa-admin'
+    },
+    body: JSON.stringify({ resolutionStatus: 'resolved', note: 'Damage verified with photos', closeBooking: true })
+  });
+  expect(resolveRes.status).toBe(200);
+  const resolved = await resolveRes.json();
+  expect(resolved.disputeResolutionStatus).toBe('resolved');
+  expect(resolved.disputeResolvedBy).toBe('qa-admin');
+  expect(resolved.bookingStage).toBe('completed');
+});
