@@ -82,7 +82,10 @@ export async function requestLoginCode(email) {
     body: JSON.stringify({ email })
   });
   const json = await res.json();
-  if (!res.ok) throw new Error(json?.error || 'Koodin lähetys epäonnistui');
+  if (!res.ok) {
+    const retryHint = json?.retryAfterSeconds ? ` Yritä uudelleen noin ${json.retryAfterSeconds}s kuluttua.` : '';
+    throw new Error(`${json?.error || 'Koodin lähetys epäonnistui'}${retryHint}`.trim());
+  }
   return json;
 }
 
