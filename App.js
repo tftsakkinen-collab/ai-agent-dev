@@ -25,6 +25,14 @@ import ListingModerationScreen from './src/screens/ListingModerationScreen';
 import PilotInviteScreen from './src/screens/PilotInviteScreen';
 import NotificationCenterScreen from './src/screens/NotificationCenterScreen';
 import DataExportScreen from './src/screens/DataExportScreen';
+import RenterProfileScreen from './src/screens/RenterProfileScreen';
+import HostProfileScreen from './src/screens/HostProfileScreen';
+import MessagingScreen from './src/screens/MessagingScreen';
+import BookingHistoryScreen from './src/screens/BookingHistoryScreen';
+import PaymentHistoryScreen from './src/screens/PaymentHistoryScreen';
+import CancellationScreen from './src/screens/CancellationScreen';
+import SearchAndFilterScreen from './src/screens/SearchAndFilterScreen';
+import HostOnboardingScreen from './src/screens/HostOnboardingScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -62,6 +70,14 @@ export default function App() {
           <Stack.Screen name="PilotInvite" component={PilotInviteScreen} />
           <Stack.Screen name="NotificationCenter" component={NotificationCenterScreen} />
           <Stack.Screen name="DataExport" component={DataExportScreen} />
+          <Stack.Screen name="RenterProfile" component={RenterProfileScreen} />
+          <Stack.Screen name="HostProfile" component={HostProfileScreen} />
+          <Stack.Screen name="Messaging" component={MessagingScreen} />
+          <Stack.Screen name="BookingHistory" component={BookingHistoryScreen} />
+          <Stack.Screen name="PaymentHistory" component={PaymentHistoryScreen} />
+          <Stack.Screen name="Cancellation" component={CancellationScreen} />
+          <Stack.Screen name="SearchAndFilter" component={SearchAndFilterScreen} />
+          <Stack.Screen name="HostOnboarding" component={HostOnboardingScreen} />
         </Stack.Navigator>
         <ReportIssueButton routeName={routeName} />
       </NavigationContainer>

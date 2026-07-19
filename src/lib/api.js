@@ -424,3 +424,71 @@ export async function exportMetricsAsCSV() {
   if (!res.ok) throw new Error('Export failed');
   return res.text();
 }
+
+export async function getRenterProfile() {
+  return fetchJson('/api/profiles/renter');
+}
+
+export async function updateRenterProfile(data) {
+  return fetchJson('/api/profiles/renter', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+}
+
+export async function getHostProfile() {
+  return fetchJson('/api/profiles/host');
+}
+
+export async function updateHostProfile(data) {
+  return fetchJson('/api/profiles/host', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+}
+
+export async function getMessages(bookingId) {
+  return fetchJson(`/api/messages?bookingId=${bookingId}`);
+}
+
+export async function sendMessage(bookingId, text) {
+  return fetchJson('/api/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bookingId, text })
+  });
+}
+
+export async function getBookingHistory() {
+  return fetchJson('/api/bookings/history');
+}
+
+export async function getPaymentHistory() {
+  return fetchJson('/api/payments/history');
+}
+
+export async function cancelBooking(bookingId, data) {
+  return fetchJson(`/api/bookings/${bookingId}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+}
+
+export async function searchProducts(query) {
+  const url = new URL('http://localhost:3000/api/products/search');
+  url.searchParams.set('q', query);
+  const res = await fetchWithAuth(url.toString());
+  if (!res.ok) throw new Error('Search failed');
+  return res.json();
+}
+
+export async function submitHostOnboarding(data) {
+  return fetchJson('/api/host/onboarding', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+}

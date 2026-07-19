@@ -39,7 +39,8 @@ const STORE_KEYS = {
   authAuditLogs: 'gearspot:authAuditLogs',
   ownerListings: 'gearspot:ownerListings',
   inviteCodes: 'gearspot:inviteCodes',
-  notifications: 'gearspot:notifications'
+  notifications: 'gearspot:notifications',
+  messages: 'gearspot:messages'
 };
 
 const BOOKING_STAGE = {
@@ -2380,6 +2381,245 @@ app.get('/api/export/metrics', async (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="metrics-${Date.now()}.csv"`);
   return res.send(csv);
+});
+
+// Profile endpoints
+app.get('/api/profiles/renter', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const userBookings = allBookings.filter((b) => b.email === session.email);
+  const completedBookings = userBookings.filter((b) => b.bookingStage === 'completed');
+  const reviewsData = userBookings
+    .flatMap((b) => (b.reviewFlow?.renterReview ? [b.reviewFlow.renterReview] : []))
+    .filter((r) => r && r.rating);
+
+  const avgRating = reviewsData.length > 0
+    ? (reviewsData.reduce((sum, r) => sum + (r.rating || 0), 0) / reviewsData.length).toFixed(1)
+    : null;
+
+  return res.json({
+    email: session.email,
+    fullName: session.fullName || 'User',
+    phone: session.phone || '',
+    bio: session.bio || '',
+    totalBookings: userBookings.length,
+    completedBookings: completedBookings.length,
+    averageRating: avgRating,
+    disputes: userBookings.filter((b) => b.bookingStage === 'disputed').length
+  });
+});
+
+app.patch('/api/profiles/renter', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { fullName, phone, bio } = req.body || {};
+  session.fullName = fullName || session.fullName;
+  session.phone = phone || session.phone;
+  session.bio = bio || session.bio;
+
+  return res.json({
+    email: session.email,
+    fullName: session.fullName,
+    phone: session.phone,
+    bio: session.bio
+  });
+});
+
+app.get('/api/profiles/host', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allListings = await readOwnerListings();
+  const userListings = allListings.filter((l) => l.ownerEmail === session.email);
+  const allBookings = await readBookings();
+  const userBookings = allBookings.filter((b) => b.ownerEmail === session.email);
+
+  return res.json({
+    email: session.email,
+    companyName: session.companyName || 'Company',
+    description: session.description || '',
+    totalListings: userListings.length,
+    totalBookings: userBookings.length,
+    responseRate: 95,
+    verifiedAt: session.verifiedAt ? new Date(session.verifiedAt).toISOString() : null
+  });
+});
+
+app.patch('/api/profiles/host', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { companyName, description } = req.body || {};
+  session.companyName = companyName || session.companyName;
+  session.description = description || session.description;
+
+  return res.json({
+    email: session.email,
+    companyName: session.companyName,
+    description: session.description
+  });
+});
+
+// Messaging endpoints
+let messages = [];
+async function readMessages() {
+  return readStoreList(STORE_KEYS.messages, messages);
+}
+
+async function saveMessages(items) {
+  const snapshot = Array.isArray(items) ? [...items] : [];
+  messages = snapshot;
+  await writeStoreList(STORE_KEYS.messages || 'gearspot:messages', snapshot);
+}
+
+app.get('/api/messages', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const bookingId = req.query.bookingId;
+  if (!bookingId) return res.status(400).json({ error: 'bookingId required' });
+
+  const allMessages = await readMessages();
+  const bookingMessages = allMessages
+    .filter((m) => m.bookingId === bookingId)
+    .map((m) => ({
+      ...m,
+      isOwn: m.senderEmail === session.email
+    }))
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+  return res.json(bookingMessages);
+});
+
+app.post('/api/messages', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { bookingId, text } = req.body || {};
+  if (!bookingId || !text) return res.status(400).json({ error: 'bookingId and text required' });
+
+  const message = {
+    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    bookingId,
+    senderEmail: session.email,
+    text: text.trim(),
+    createdAt: new Date().toISOString()
+  };
+
+  const allMessages = await readMessages();
+  allMessages.push(message);
+  await saveMessages(allMessages);
+
+  return res.json(message);
+});
+
+// Booking history endpoint
+app.get('/api/bookings/history', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const userBookings = allBookings.filter((b) => b.email === session.email);
+  return res.json(userBookings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+});
+
+// Payment history endpoint
+app.get('/api/payments/history', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const userBookings = allBookings.filter((b) => b.email === session.email);
+
+  const payments = userBookings.flatMap((b) => [
+    {
+      id: `payment-${b.id}`,
+      description: `Booking: ${b.product?.name || 'Product'}`,
+      amount: b.depositAmount || 0,
+      type: 'charge',
+      status: b.depositStatus === 'held' ? 'completed' : 'pending',
+      createdAt: b.createdAt
+    }
+  ]);
+
+  const summary = {
+    totalEarnings: payments.filter((p) => p.type === 'charge').reduce((sum, p) => sum + p.amount, 0),
+    totalRefunds: 0,
+    netEarnings: payments.filter((p) => p.type === 'charge').reduce((sum, p) => sum + p.amount, 0)
+  };
+
+  return res.json({ payments, summary });
+});
+
+// Booking cancellation endpoint
+app.post('/api/bookings/:id/cancel', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const allBookings = await readBookings();
+  const booking = allBookings.find((b) => b.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  const { reason, feedback } = req.body || {};
+  booking.cancelledAt = new Date().toISOString();
+  booking.cancellationReason = reason || 'User cancelled';
+  booking.cancellationFeedback = feedback || '';
+  booking.bookingStage = 'cancelled';
+
+  const index = allBookings.findIndex((b) => b.id === req.params.id);
+  if (index >= 0) {
+    allBookings[index] = booking;
+    await saveBookings(allBookings);
+  }
+
+  return res.json({ ok: true, message: 'Booking cancelled', bookingStage: 'cancelled' });
+});
+
+// Product search endpoint
+app.get('/api/products/search', async (req, res) => {
+  const query = (req.query.q || '').trim().toLowerCase();
+  const allProducts = getPublicProducts();
+
+  if (!query) {
+    return res.json(allProducts.slice(0, 20));
+  }
+
+  const filtered = allProducts.filter((p) =>
+    p.name.toLowerCase().includes(query) ||
+    (p.description || '').toLowerCase().includes(query) ||
+    (p.category || '').toLowerCase().includes(query)
+  );
+
+  return res.json(filtered.slice(0, 20));
+});
+
+// Host onboarding endpoint
+app.post('/api/host/onboarding', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { companyName, description, bankAccount, termsAccepted, liabilityAccepted } = req.body || {};
+
+  if (!companyName || !bankAccount || !termsAccepted || !liabilityAccepted) {
+    return res.status(400).json({ error: 'All fields required' });
+  }
+
+  session.companyName = companyName;
+  session.description = description || '';
+  session.bankAccount = bankAccount;
+  session.onboardingCompletedAt = new Date().toISOString();
+  session.isHost = true;
+
+  return res.json({
+    ok: true,
+    message: 'Host onboarding submitted',
+    onboardingCompletedAt: session.onboardingCompletedAt
+  });
 });
 
 app.use((error, req, res, next) => {
