@@ -154,7 +154,7 @@
 - Admin moderation tools (basic).
 - Terms, liability notice, and safety checklist UX.
 
-## Completed Tasks (2026-07-19)
+## Completed Tasks (2026-07-19 Batch 1)
 - ✅ Supabase magic-link auth adapter and UI (Phase 1)
 - ✅ Photo upload endpoint for host listings (Phase 1)
 - ✅ Admin throughput metrics dashboard (Phase 5)
@@ -168,9 +168,16 @@
 - ✅ Terms and safety checklist screens (Cross-cutting)
 - ✅ Branding polish and logo integration (Cross-cutting)
 
+## Completed Tasks (2026-07-19 Batch 2)
+- ✅ Dispute resolution UI with evidence upload (Phase 3)
+- ✅ Admin listing moderation queue (Phase 1)
+- ✅ Booking disputes API endpoints (Phase 3)
+- ✅ Enhanced pilot metrics dashboard with KPI cards (Phase 5)
+- ✅ Stripe deposit payment integration (Phase 3)
+
 ## Immediate Next 5 Tasks
-1. Booking state transition enforcement and validation rules engine.
-2. Admin listing approval/rejection workflow with moderation queue.
-3. Dispute resolution and evidence review interface.
-4. Pilot launch metrics dashboard with real-time KPIs.
-5. Stripe deposit payment integration for booking holds.
+1. Production auth provider flip and Supabase config validation.
+2. Booking deposit hold enforcement and release workflow.
+3. Pilot launch preparation: invite codes and access control.
+4. Real-time notification system for booking events.
+5. Data export and reporting tools for pilot metrics.
