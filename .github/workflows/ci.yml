@@ -24,4 +24,6 @@ jobs:
       - name: Run Playwright E2E checks
         run: npm run test:e2e
       - name: Build web (Expo)
-        run: npm run web --silent || echo "web build skipped in CI"
+        run: npm run build:web
+      - name: Run deploy smoke checks
+        run: SMOKE_START_LOCAL=true npm run smoke:deploy

@@ -7,4 +7,6 @@
 5. Configure builds for Android and iOS (signing keys, store metadata).
 6. Configure web deploy (Vercel/Netlify or static hosting).
 7. Run full test suite and performance smoke tests.
-8. Release communications and monitoring (Sentry, logs).
+8. Run deploy smoke checks (npm run smoke:deploy) against the target URL.
+9. Verify API error responses include x-request-id for traceability.
+10. Release communications and monitoring (Sentry, logs).

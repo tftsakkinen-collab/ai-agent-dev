@@ -491,3 +491,19 @@ test('admin can resolve disputed booking', async () => {
   expect(resolved.disputeResolvedBy).toBe('qa-admin');
   expect(resolved.bookingStage).toBe('completed');
 });
+
+test('auth provider status and pilot metrics endpoints return admin data', async () => {
+  const providerRes = await fetch('http://localhost:3000/api/auth/provider-status');
+  expect(providerRes.status).toBe(200);
+  const provider = await providerRes.json();
+  expect(provider.provider).toBeTruthy();
+  expect(typeof provider.ready).toBe('boolean');
+
+  const metricsRes = await fetch('http://localhost:3000/api/admin/pilot-metrics?days=30');
+  expect(metricsRes.status).toBe(200);
+  const metrics = await metricsRes.json();
+  expect(metrics.periodDays).toBe(30);
+  expect(metrics.totals).toBeTruthy();
+  expect(metrics.metrics).toBeTruthy();
+  expect(typeof metrics.metrics.bookingCompletionRatePct).toBe('number');
+});

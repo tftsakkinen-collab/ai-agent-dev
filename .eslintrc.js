@@ -1,5 +1,6 @@
 module.exports = {
   root: true,
+  ignorePatterns: ['dist/**', 'node_modules/**', '.expo/**', 'test-results/**'],
   extends: ['eslint:recommended', 'plugin:react/recommended'],
   parserOptions: { ecmaVersion: 2024, sourceType: 'module' },
   env: { node: true, jest: true, browser: true, es2024: true },

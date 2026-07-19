@@ -16,6 +16,7 @@
     "test": "jest",
     "test:unit": "jest",
     "test:e2e": "npx playwright test",
+    "smoke:deploy": "bash scripts/smoke_deploy.sh",
     "test:all": "npm run test:unit && npm run test:e2e",
     "release:gate": "bash scripts/release_gate.sh",
     "release:easy": "bash scripts/release_easy.sh"

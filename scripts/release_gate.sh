@@ -47,5 +47,6 @@ echo "- Secret precheck passed"
 npm run lint
 npm test -- --runInBand
 npm run test:e2e
+SMOKE_START_LOCAL=true npm run smoke:deploy
 
 echo "Release gate passed"

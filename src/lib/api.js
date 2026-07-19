@@ -190,3 +190,11 @@ export async function resolveAdminDispute(bookingId, resolutionStatus, note, clo
 export async function getAuthAuditLogs(limit = 100) {
   return fetchJson(`/api/admin/auth-audit-logs?limit=${encodeURIComponent(String(limit))}`);
 }
+
+export async function getAdminPilotMetrics(days = 30) {
+  return fetchJson(`/api/admin/pilot-metrics?days=${encodeURIComponent(String(days))}`);
+}
+
+export async function getAuthProviderStatus() {
+  return fetchJson('/api/auth/provider-status');
+}

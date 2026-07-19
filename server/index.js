@@ -3,6 +3,7 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { createAuthProvider } = require('./authProvider');
 const app = express();
 const port = process.env.PORT || 3000;
 const authSecret = process.env.AUTH_SECRET || 'gearspot-dev-auth-secret';
@@ -44,6 +45,11 @@ const ALLOWED_HANDOFF_METHODS = ['lockbox_code', 'in_person'];
 const ALLOWED_DEPOSIT_STATUS = ['not_required', 'held', 'released', 'claimed'];
 const ALLOWED_REVIEW_ACTORS = ['owner', 'renter'];
 const REVIEW_REVEAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const authProvider = createAuthProvider({
+  providerName: process.env.AUTH_PROVIDER || 'local_code',
+  supabaseUrl: process.env.SUPABASE_URL,
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY
+});
 
 app.use(cors());
 app.use(express.json());
@@ -297,6 +303,54 @@ function getSafeBookingView(booking) {
   }
 
   return copy;
+}
+
+function computePilotMetrics(bookingsList, periodDays) {
+  const totalBookings = bookingsList.length;
+  const completedBookings = bookingsList.filter((booking) => booking.bookingStage === BOOKING_STAGE.COMPLETED || booking.bookingStatus === 'completed').length;
+  const disputedBookings = bookingsList.filter((booking) => booking.bookingStage === BOOKING_STAGE.DISPUTED || Boolean(booking.disputedAt)).length;
+
+  const allReviewRatings = bookingsList.flatMap((booking) => {
+    const ownerRating = booking.reviewFlow?.ownerReview?.rating;
+    const renterRating = booking.reviewFlow?.renterReview?.rating;
+    return [ownerRating, renterRating].filter((rating) => Number.isFinite(rating));
+  });
+
+  const averageReviewScore = allReviewRatings.length
+    ? Number((allReviewRatings.reduce((sum, rating) => sum + rating, 0) / allReviewRatings.length).toFixed(2))
+    : null;
+
+  const resolutionHours = bookingsList
+    .filter((booking) => booking.disputedAt && booking.disputeResolvedAt)
+    .map((booking) => (new Date(booking.disputeResolvedAt).getTime() - new Date(booking.disputedAt).getTime()) / (1000 * 60 * 60))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+
+  const avgResolutionHours = resolutionHours.length
+    ? Number((resolutionHours.reduce((sum, value) => sum + value, 0) / resolutionHours.length).toFixed(2))
+    : null;
+
+  const listingToBookingConversionProxy = products.length ? Number(((totalBookings / products.length) * 100).toFixed(2)) : 0;
+
+  return {
+    periodDays,
+    totals: {
+      bookings: totalBookings,
+      completedBookings,
+      disputedBookings,
+      reviewCount: allReviewRatings.length,
+      resolvedDisputes: resolutionHours.length
+    },
+    metrics: {
+      listingToBookingConversionProxyPct: listingToBookingConversionProxy,
+      bookingCompletionRatePct: totalBookings ? Number(((completedBookings / totalBookings) * 100).toFixed(2)) : 0,
+      disputeRatePct: totalBookings ? Number(((disputedBookings / totalBookings) * 100).toFixed(2)) : 0,
+      averageReviewScore,
+      averageResolutionHours: avgResolutionHours
+    },
+    notes: {
+      listingToBookingConversionProxyPct: 'Uses product count as listing denominator until listing impressions are tracked.'
+    }
+  };
 }
 
 function getProductById(id) {
@@ -629,6 +683,66 @@ app.post('/api/auth/login', (req, res) => {
   return res.json({ token, email, userId: buildUserIdFromEmail(email) });
 });
 
+app.get('/api/auth/provider-status', (req, res) => {
+  return res.json(authProvider.getPublicStatus());
+});
+
+app.post('/api/auth/magic-link/request', async (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  if (!isValidEmail(email)) {
+    await appendAuthAuditLog('request_magic_link_invalid_email', req, { email });
+    return res.status(400).json({ error: 'Valid email required' });
+  }
+
+  if (authProvider.providerName === 'local_code') {
+    const policy = evaluateAuthRequestPolicy(req, email);
+    if (!policy.ok) {
+      await appendAuthAuditLog('request_magic_link_blocked', req, {
+        email,
+        reason: policy.reason,
+        retryAfterSeconds: policy.retryAfterSeconds
+      });
+      return res.status(429).json({
+        error: 'Too many requests. Please wait before requesting a new link.',
+        reason: policy.reason,
+        retryAfterSeconds: policy.retryAfterSeconds
+      });
+    }
+
+    const code = issueLoginCode(email);
+    await appendAuthAuditLog('request_magic_link_sent_local_code', req, {
+      email,
+      expiresInSeconds: Math.floor(AUTH_CODE_TTL_MS / 1000)
+    });
+
+    const response = {
+      ok: true,
+      provider: 'local_code',
+      expiresInSeconds: Math.floor(AUTH_CODE_TTL_MS / 1000)
+    };
+    if (exposeAuthCode) {
+      response.devCode = code;
+    }
+    return res.json(response);
+  }
+
+  const result = await authProvider.requestMagicLink({ email, requestId: req.requestId });
+  if (!result.ok) {
+    await appendAuthAuditLog('request_magic_link_provider_failed', req, {
+      email,
+      provider: authProvider.providerName,
+      providerCode: result.code || 'unknown'
+    });
+    return res.status(result.statusCode || 500).json({ error: result.error || 'Provider request failed' });
+  }
+
+  await appendAuthAuditLog('request_magic_link_provider_sent', req, {
+    email,
+    provider: authProvider.providerName
+  });
+  return res.json(result);
+});
+
 function getSession(req) {
   const auth = req.headers['authorization'];
   if (!auth || !auth.startsWith('Bearer ')) return null;
@@ -947,6 +1061,23 @@ app.patch('/api/admin/disputes/:id', async (req, res) => {
 
   await saveBookings(allBookings);
   return res.json(getSafeBookingView(booking));
+});
+
+app.get('/api/admin/pilot-metrics', async (req, res) => {
+  if (!isAdminAuthorized(req)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  const periodDays = Math.min(Math.max(Number(req.query.days || 30), 1), 365);
+  const cutoff = Date.now() - periodDays * 24 * 60 * 60 * 1000;
+
+  const allBookings = await readBookings();
+  const scoped = allBookings.filter((booking) => {
+    const created = new Date(booking.createdAt || 0).getTime();
+    return Number.isFinite(created) && created >= cutoff;
+  });
+
+  return res.json(computePilotMetrics(scoped, periodDays));
 });
 
 app.post('/api/bookings/:id/deposit/setup', async (req, res) => {

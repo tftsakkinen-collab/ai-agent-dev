@@ -1,23 +1,29 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { SafeAreaView, View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
-import { getAdminDisputes, getAuthAuditLogs, resolveAdminDispute } from '../lib/api';
+import { getAdminDisputes, getAdminPilotMetrics, getAuthAuditLogs, getAuthProviderStatus, resolveAdminDispute } from '../lib/api';
 
 export default function AdminOpsScreen() {
   const [disputes, setDisputes] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
+  const [pilotMetrics, setPilotMetrics] = useState(null);
+  const [providerStatus, setProviderStatus] = useState(null);
   const [activeStatus, setActiveStatus] = useState('open');
   const [loading, setLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [disputeData, auditData] = await Promise.all([
+      const [disputeData, auditData, metricsData, providerData] = await Promise.all([
         getAdminDisputes(activeStatus),
-        getAuthAuditLogs(30)
+        getAuthAuditLogs(30),
+        getAdminPilotMetrics(30),
+        getAuthProviderStatus()
       ]);
       setDisputes(disputeData || []);
       setAuditLogs(auditData || []);
+      setPilotMetrics(metricsData || null);
+      setProviderStatus(providerData || null);
     } catch (error) {
       Alert.alert('Admin-datan haku epäonnistui', error.message);
     } finally {
@@ -81,6 +87,31 @@ export default function AdminOpsScreen() {
               </View>
             </View>
           ))}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Pilot metrics (30d)</Text>
+          {!pilotMetrics ? <Text style={styles.metaText}>Ei metriikkadataa.</Text> : null}
+          {pilotMetrics ? (
+            <>
+              <Text style={styles.metaText}>Booking completion: {pilotMetrics.metrics?.bookingCompletionRatePct ?? 0}%</Text>
+              <Text style={styles.metaText}>Dispute rate: {pilotMetrics.metrics?.disputeRatePct ?? 0}%</Text>
+              <Text style={styles.metaText}>Average review: {pilotMetrics.metrics?.averageReviewScore ?? '-'}</Text>
+              <Text style={styles.metaText}>Resolution time (h): {pilotMetrics.metrics?.averageResolutionHours ?? '-'}</Text>
+              <Text style={styles.metaText}>Listing to booking proxy: {pilotMetrics.metrics?.listingToBookingConversionProxyPct ?? 0}%</Text>
+            </>
+          ) : null}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Auth provider</Text>
+          {!providerStatus ? <Text style={styles.metaText}>Ei provider-dataa.</Text> : null}
+          {providerStatus ? (
+            <>
+              <Text style={styles.metaText}>Provider: {providerStatus.provider}</Text>
+              <Text style={styles.metaText}>Ready: {providerStatus.ready ? 'yes' : 'no'}</Text>
+            </>
+          ) : null}
         </View>
 
         <View style={styles.card}>
