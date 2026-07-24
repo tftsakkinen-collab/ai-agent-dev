@@ -1,18 +1,22 @@
 import React, { useState } from 'react';
-import { SafeAreaView, View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert } from 'react-native';
+import { SafeAreaView, View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
+import Toast from '../components/Toast';
 import ScreenHeader from '../components/ScreenHeader';
 
 export default function ProductDetail({ route, navigation }) {
   const { product } = route.params || {};
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
 
   const dates = ['Tänään', 'Huomenna', 'Ylihuomenna'];
   const times = ['10:00 - 12:00', '12:00 - 14:00', '14:00 - 16:00', '16:00 - 18:00'];
 
   const handleAction = () => {
     if (!selectedDate || !selectedTime) {
-      Alert.alert('Valitse aika', 'Valitse päivämäärä ja kellonaika ennen varauksen jatkamista.');
+      setToastMessage('Valitse päivämäärä ja kellonaika ensin.');
+      setToastVisible(true);
       return;
     }
     navigation.navigate('TermsSafety', { product, selectedDate, selectedTime });
@@ -23,6 +27,7 @@ export default function ProductDetail({ route, navigation }) {
       <View style={styles.emptyContainer}>
         <Text style={styles.emptyText}>Tuotetta ei löydy.</Text>
       </View>
+      <Toast message={toastMessage} visible={toastVisible} onHide={() => setToastVisible(false)} />
     </SafeAreaView>
   );
 
@@ -76,6 +81,9 @@ export default function ProductDetail({ route, navigation }) {
           </View>
         </View>
         <View style={styles.buttonGroup}>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => { setToastMessage('Linkki kopioitu leikepöydälle!'); setToastVisible(true); }}>
+            <Text style={styles.secondaryButtonText}>Jaa ilmoitus</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('ReviewScreen', { targetType: 'product', targetId: product.id, targetName: product.name })}>
             <Text style={styles.secondaryButtonText}>Arvostelut</Text>
           </TouchableOpacity>
