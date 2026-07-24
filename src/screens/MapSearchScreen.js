@@ -1,41 +1,38 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, FlatList, Linking, Alert, SafeAreaView, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, StyleSheet, FlatList,Alert, SafeAreaView, TouchableOpacity, Platform } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import ScreenHeader from '../components/ScreenHeader';
 import { fetchJson } from '../lib/api';
 
-export default function MapSearchScreen({ route }) {
+export default function MapSearchScreen({ route, navigation }) {
   const initialQuery = route?.params?.initialQuery || '';
   const [search, setSearch] = useState(initialQuery);
-  const [locations, setLocations] = useState([]);
+  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetchLocations(initialQuery);
+    fetchProducts(initialQuery);
   }, [initialQuery]);
 
-  const fetchLocations = async (query = '') => {
+  const fetchProducts = async (query = '') => {
     setLoading(true);
     try {
-      const data = await fetchJson(`/api/locations?q=${encodeURIComponent(query)}`);
-      setLocations(data);
+      const data = await fetchJson(`/api/products`);
+      // Simple client side filter for now
+      const filtered = query ? data.filter(p => p.name.toLowerCase().includes(query.toLowerCase()) || p.locationName.toLowerCase().includes(query.toLowerCase())) : data;
+      setProducts(filtered);
     } catch (error) {
       Alert.alert('Virhe', 'Sijainteja ei voitu hakea. Tarkista palvelin.');
-      setLocations([]);
+      setProducts([]);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSearch = () => {
-    fetchLocations(search);
+    fetchProducts(search);
   };
 
-  const openGoogleMaps = (query) => {
-    const url = `https://www.google.com/maps/search/${encodeURIComponent(query)}`;
-    Linking.openURL(url).catch(() => {
-      Alert.alert('Virhe', 'Ei voitu avata Google Mapsia.');
-    });
-  };
 
   return (
     <SafeAreaView style={styles.safe}>      
@@ -58,22 +55,32 @@ export default function MapSearchScreen({ route }) {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.resultInfo}>{loading ? 'Haetaan...' : `${locations.length} sijaintia`}</Text>
-        <FlatList
-          data={locations}
-          keyExtractor={(item) => item.id}
-          ListEmptyComponent={<Text style={styles.empty}>{loading ? 'Ladataan...' : 'Ei hakutuloksia.'}</Text>}
-          renderItem={({ item }) => (
-            <View style={styles.card}>
-              <Text style={styles.lakeName}>{item.name}</Text>
-              <Text style={styles.meta}>{item.category} · {item.place}</Text>
-              <Text style={styles.meta}>{item.productCount ?? item.products?.length ?? 0} tuotetta saatavilla</Text>
-              <TouchableOpacity style={styles.secondaryButton} onPress={() => openGoogleMaps(item.query)}>
-                <Text style={styles.secondaryButtonText}>Avaa Google Maps</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        />
+        <Text style={styles.resultInfo}>{loading ? 'Haetaan...' : `${products.length} sijaintia`}</Text>
+
+        {Platform.OS === 'web' ? (
+           <View style={styles.webMapPlaceholder}>
+             <Text>Kartta ei tuettu täysin web-selaimessa ilman lisäkonfiguraatiota. Näytetään {products.length} tulosta.</Text>
+           </View>
+        ) : (
+          <MapView
+            style={styles.map}
+            initialRegion={{
+              latitude: 65.0121,
+              longitude: 25.4651,
+              latitudeDelta: 0.1,
+              longitudeDelta: 0.1,
+            }}
+          >
+            {products.map(p => {
+               if (p.lat && p.lng) {
+                 return <Marker key={p.id} coordinate={{ latitude: p.lat, longitude: p.lng }} title={p.name} description={p.short} onPress={() => navigation.navigate('ProductDetail', { product: p })} />
+               }
+               return null;
+            })}
+          </MapView>
+        )}
+
+        <FlatList data={products} keyExtractor={(item) => item.id} renderItem={({ item }) => (<TouchableOpacity style={styles.item} onPress={() => navigation.navigate('ProductDetail', { product: item })}><Text style={styles.itemTitle}>{item.name}</Text><Text style={styles.itemMeta}>{item.locationName} - {item.price}</Text></TouchableOpacity>)} ListEmptyComponent={<Text style={styles.emptyText}>Ei tuloksia hakusanalla: {search}</Text>} />
       </View>
     </SafeAreaView>
   );
