@@ -281,6 +281,9 @@ export default function ProfileScreen({ navigation }) {
                   <View style={styles.item}>
                     <Text style={styles.itemTitle}>{item.product?.name || item.productId}</Text>
                     <Text style={styles.itemMeta}>{item.name} — {item.email}</Text>
+                    {item.selectedDate && item.selectedTime ? (
+                      <Text style={styles.itemMeta}>Aika: {item.selectedDate} klo {item.selectedTime}</Text>
+                    ) : null}
                     <Text style={styles.itemMeta}>Varaus: {item.bookingStatus} · Maksu: {item.paymentStatus}</Text>
                     <Text style={styles.itemMeta}>Stage: {item.bookingStage || 'approved'}</Text>
                     <Text style={styles.itemMeta}>Pantti: {item.depositStatus || 'not_required'} ({item.depositAmount || 0} EUR)</Text>

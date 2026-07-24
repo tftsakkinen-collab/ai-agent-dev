@@ -10,7 +10,7 @@ const paymentMethods = [
 ];
 
 export default function BookingScreen({ route, navigation }) {
-  const { product } = route.params || {};
+  const { product, selectedDate, selectedTime } = route.params || {};
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0].id);
@@ -41,7 +41,9 @@ export default function BookingScreen({ route, navigation }) {
           paymentMethod,
           cardLast4,
           termsAccepted,
-          safetyChecklistAccepted: safetyAccepted
+          safetyChecklistAccepted: safetyAccepted,
+          selectedDate,
+          selectedTime
         })
       });
       Alert.alert('Mock-maksu onnistui', `Varaus vahvistettu. Maksun tila: ${booking.paymentStatus}.`);
@@ -61,6 +63,11 @@ export default function BookingScreen({ route, navigation }) {
         <View style={styles.card}>
           <Text style={styles.title}>Varaa</Text>
           <Text style={styles.productName}>{product?.name}</Text>
+          {selectedDate && selectedTime ? (
+            <Text style={styles.selectedTimeText}>
+              Aika: {selectedDate} klo {selectedTime}
+            </Text>
+          ) : null}
           <Text style={styles.info}>Tama on mock-kassa. Rahaa ei veloiteta, mutta kayttokokemus etenee kuten oikeassa maksussa.</Text>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>Varaus etenee nyt 3 vaiheessa</Text>
@@ -120,7 +127,8 @@ const styles = StyleSheet.create({
   container: { padding: 16 },
   card: { backgroundColor: '#fff', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#e3eaef', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 14, elevation: 4 },
   title: { fontSize: 20, fontWeight: '700', marginBottom: 8 },
-  productName: { fontSize: 16, color: '#4a5568', marginBottom: 16 },
+  productName: { fontSize: 16, color: '#4a5568', marginBottom: 8 },
+  selectedTimeText: { fontSize: 15, color: '#15948b', fontWeight: '600', marginBottom: 16 },
   info: { color: '#556b7a', lineHeight: 21, marginBottom: 4 },
   summaryCard: { backgroundColor: '#eef7f5', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#d4ebe7', marginTop: 12 },
   summaryTitle: { color: '#0f2f3d', fontWeight: '800', marginBottom: 8 },

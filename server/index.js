@@ -803,7 +803,7 @@ app.post('/api/bookings', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
   await readOwnerListings();
-  const { productId, name, paymentMethod, cardLast4, termsAccepted, safetyChecklistAccepted } = req.body || {};
+  const { productId, name, paymentMethod, cardLast4, termsAccepted, safetyChecklistAccepted, selectedDate, selectedTime } = req.body || {};
   if (!productId || !name) return res.status(400).json({ error: 'Missing fields' });
   if (!termsAccepted || !safetyChecklistAccepted) {
     return res.status(400).json({ error: 'Terms and safety checklist must be accepted before booking' });
@@ -817,6 +817,8 @@ app.post('/api/bookings', async (req, res) => {
     productId,
     product,
     name,
+    selectedDate,
+    selectedTime,
     email: session.email,
     renterUserId: session.userId,
     bookingStatus: 'confirmed',
