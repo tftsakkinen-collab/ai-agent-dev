@@ -16,6 +16,7 @@ import {
 
 export default function ProfileScreen({ navigation }) {
   const [bookings, setBookings] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loginRequired, setLoginRequired] = useState(false);
@@ -25,6 +26,11 @@ export default function ProfileScreen({ navigation }) {
   }, []);
 
   const fetchMyData = async () => {
+    try {
+      const notifsResponse = await fetchJson('/api/notifications');
+      if (Array.isArray(notifsResponse)) setNotifications(notifsResponse);
+    } catch (e) { console.warn(e); }
+
     try {
       const [profileData, bookingsData, reviewsData] = await Promise.all([
         getProfile(),
@@ -272,6 +278,18 @@ export default function ProfileScreen({ navigation }) {
         ) : (
           <>
             <View style={styles.card}>
+
+            {notifications.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Ilmoitukset</Text>
+                {notifications.map(n => (
+                  <View key={n.id} style={[styles.itemCard, !n.read && { borderColor: '#1abc9c', borderWidth: 2 }]}>
+                    <Text style={styles.itemTitle}>{n.message}</Text>
+                    <Text style={styles.itemMeta}>{new Date(n.createdAt).toLocaleString()}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
               <Text style={styles.sectionTitle}>Omat varaukset</Text>
               <FlatList
                 data={bookings}
@@ -363,5 +381,9 @@ const styles = StyleSheet.create({
   microButtonText: { color: '#284451', fontSize: 12, fontWeight: '700' },
   microButtonWarn: { borderColor: '#f2b4a9', backgroundColor: '#fff6f3' },
   microButtonWarnText: { color: '#b33b23', fontSize: 12, fontWeight: '700' },
-  emptyText: { color: '#777', marginTop: 8 }
+  emptyText: { color: '#777', marginTop: 8 },
+
+  section: { marginBottom: 20 },
+  itemCard: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#e3eaef' },
+
 });

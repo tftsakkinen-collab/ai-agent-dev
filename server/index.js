@@ -27,6 +27,7 @@ if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
 }
 
 const STORE_KEYS = {
+  notifications: 'gearspot:notifications',
   bookings: 'gearspot:bookings',
   dynamicReviews: 'gearspot:dynamicReviews',
   feedbackReports: 'gearspot:feedbackReports',
@@ -132,7 +133,16 @@ const products = [
     providerId: 'provider-2',
     searchTerms: ['sup', 'aloittelija', 'oulu', 'hietasaari', 'lauta']
   }
-];
+,
+  {
+    id: 'sup-4',
+    type: 'sup_board',
+    name: 'Kuivasjärvi Family SUP',
+    short: 'Erittäin leveä ja vakaa lauta Kuivasjärvellä. Sopii myös koiran kanssa suppailuun.',
+    price: '12 €/tunti · 50 €/päivä',
+    providerId: 'provider-1',
+    searchTerms: ['sup', 'lauta', 'oulu', 'kuivasjärvi', 'koira', 'perhe']
+  }];
 
 const locations = [
   {
@@ -159,7 +169,15 @@ const locations = [
     query: 'Tuiran ranta Oulu',
     products: ['sup-2', 'sup-3']
   }
-];
+,
+  {
+    id: 'oulu-4',
+    name: 'Kuivasjärvi',
+    category: 'Lake',
+    place: 'Oulu',
+    query: 'Kuivasjärvi Oulu',
+    products: ['sup-4']
+  }];
 
 const categories = [
   { id: 'oulu-sup', title: 'Oulu SUP Pilot', label: 'SUP-laudat Oulun alueella', query: 'oulu sup' }
@@ -170,6 +188,31 @@ let bookings = [];
 let dynamicReviews = [];
 let ownerListings = [];
 const feedbackReports = [];
+
+const notifications = [];
+
+async function readNotifications() {
+  return readStoreList(STORE_KEYS.notifications, notifications);
+}
+
+async function saveNotifications(items) {
+  const snapshot = [...items];
+  notifications.length = 0;
+  notifications.push(...snapshot);
+  await writeStoreList(STORE_KEYS.notifications, snapshot);
+}
+
+function generateNotification(userId, message, type = 'info', metadata = {}) {
+  return {
+    id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    userId,
+    message,
+    type,
+    metadata,
+    createdAt: new Date().toISOString(),
+    read: false
+  };
+}
 const authAuditLogs = [];
 const feedbackLogPath = path.join(__dirname, '..', 'logs', 'feedback-reports.ndjson');
 
@@ -282,10 +325,6 @@ function getCommunityProviders({ includePending = false } = {}) {
   );
 }
 
-async function getBookingById(id) {
-  const allBookings = await readBookings();
-  return allBookings.find((booking) => booking.id === id);
-}
 
 function isValidTransition(from, to) {
   const transitions = {
@@ -533,7 +572,9 @@ function buildAuthToken(email) {
 }
 
 function parseAuthToken(token) {
-  if (!token || !token.startsWith('gs-auth.')) {
+
+  // Debug
+    if (!token || !token.startsWith('gs-auth.')) {
     return null;
   }
 
@@ -857,6 +898,12 @@ app.post('/api/bookings', async (req, res) => {
   booking.paidAt = booking.createdAt;
   const allBookings = await readBookings();
   allBookings.push(booking);
+
+  const notifs = await readNotifications();
+  const renterNotif = generateNotification(session.userId, `Varauksesi lautaan ${product.name} on vastaanotettu!`, 'booking_created', { bookingId: booking.id });
+  const ownerNotif = generateNotification(product.providerId || 'admin', `Sait uuden varauksen lautaan ${product.name}!`, 'booking_received', { bookingId: booking.id });
+  notifs.push(renterNotif, ownerNotif);
+  await saveNotifications(notifs);
   await saveBookings(allBookings);
   res.json(getSafeBookingView(booking));
 });
@@ -883,6 +930,11 @@ app.post('/api/bookings/:id/refund', async (req, res) => {
   booking.refundedAt = new Date().toISOString();
 
   await saveBookings(allBookings);
+
+    const notifs = await readNotifications();
+    notifs.push(generateNotification(booking.renterUserId, `Varauksesi lautaan ${booking.product.name} on peruttu ja maksu palautettu.`, 'booking_refunded', { bookingId: booking.id }));
+    notifs.push(generateNotification(booking.product.providerId || 'admin', `Varaus lautaan ${booking.product.name} on peruttu.`, 'booking_refunded', { bookingId: booking.id }));
+    await saveNotifications(notifs);
 
   return res.json(booking);
 });
@@ -1827,5 +1879,27 @@ if (require.main === module) {
     console.log(`Mock API server running on http://localhost:${port}`);
   });
 }
+
+
+app.get('/api/notifications', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  const notifs = await readNotifications();
+  const userNotifs = notifs.filter(n => n.userId === session.userId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  res.json(userNotifs);
+});
+
+app.patch('/api/notifications/:id/read', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  const notifs = await readNotifications();
+  const notif = notifs.find(n => n.id === req.params.id && n.userId === session.userId);
+  if (notif) {
+    notif.read = true;
+    await saveNotifications(notifs);
+    return res.json(notif);
+  }
+  res.status(404).json({error: 'Not found'});
+});
 
 module.exports = app;
