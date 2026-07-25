@@ -16,6 +16,7 @@ import FeedbackReportsScreen from './src/screens/FeedbackReportsScreen';
 import AdminOpsScreen from './src/screens/AdminOpsScreen';
 import BecomeHostScreen from './src/screens/BecomeHostScreen';
 import TermsSafetyScreen from './src/screens/TermsSafetyScreen';
+import ChatScreen from './src/screens/ChatScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -39,6 +40,7 @@ export default function App() {
           <Stack.Screen name="Booking" component={BookingScreen} />
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="FeedbackReports" component={FeedbackReportsScreen} />
+        <Stack.Screen name="Chat" component={ChatScreen} />
           <Stack.Screen name="AdminOps" component={AdminOpsScreen} />
           <Stack.Screen name="BecomeHost" component={BecomeHostScreen} />
           <Stack.Screen name="TermsSafety" component={TermsSafetyScreen} />

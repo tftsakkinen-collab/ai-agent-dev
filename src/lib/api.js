@@ -102,6 +102,25 @@ export async function verifyLoginCode(email, code) {
   return json;
 }
 
+
+export async function getFavorites() {
+  return fetchJson('/api/favorites');
+}
+
+export async function addFavorite(productId) {
+  return fetchJson('/api/favorites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ productId })
+  });
+}
+
+export async function removeFavorite(productId) {
+  return fetchJson(`/api/favorites/${productId}`, {
+    method: 'DELETE'
+  });
+}
+
 export async function getProfile() {
   return fetchJson('/api/me');
 }

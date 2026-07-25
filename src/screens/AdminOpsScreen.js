@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { SafeAreaView, View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
-import { getAdminDisputes, getAdminListings, getAdminPilotMetrics, getAuthAuditLogs, getAuthProviderStatus, getListingModerationThroughput, moderateAdminListing, resolveAdminDispute, fetchJson } from '../lib/api';
+import { getAdminDisputes, getAdminListings, getAdminPilotMetrics, getAuthAuditLogs, getAuthProviderStatus, getListingModerationThroughput, moderateAdminListing, resolveAdminDispute } from '../lib/api';
 
 export default function AdminOpsScreen() {
   const [disputes, setDisputes] = useState([]);
@@ -11,8 +11,6 @@ export default function AdminOpsScreen() {
   const [providerStatus, setProviderStatus] = useState(null);
   const [pendingListings, setPendingListings] = useState([]);
   const [activeStatus, setActiveStatus] = useState('open');
-  // eslint-disable-next-line no-unused-vars
-  const [users, setUsers] = useState([]);
   const [listingStatusFilter, setListingStatusFilter] = useState('pending');
   const [loading, setLoading] = useState(false);
 
@@ -25,8 +23,7 @@ export default function AdminOpsScreen() {
         getAdminPilotMetrics(30),
         getAuthProviderStatus(),
         getAdminListings(listingStatusFilter),
-        getListingModerationThroughput(),
-        fetchJson('/api/admin/users')
+        getListingModerationThroughput()
       ]);
       setDisputes(disputeData || []);
       setAuditLogs(auditData || []);
@@ -109,19 +106,6 @@ export default function AdminOpsScreen() {
                   <Text style={styles.warnButtonText}>Reject</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          ))}
-        </View>
-
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Käyttäjät</Text>
-          {users && users.length === 0 ? <Text style={styles.metaText}>Ei käyttäjiä.</Text> : null}
-          {users && users.map((user) => (
-            <View key={user.id} style={styles.disputeItem}>
-              <Text style={styles.itemTitle}>{user.email}</Text>
-              <Text style={styles.metaText}>Rooli: {user.role}</Text>
-              <Text style={styles.metaText}>ID: {user.id}</Text>
             </View>
           ))}
         </View>

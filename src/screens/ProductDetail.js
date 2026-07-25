@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { SafeAreaView, View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
 import Toast from '../components/Toast';
 import ScreenHeader from '../components/ScreenHeader';
+import { getFavorites, addFavorite, removeFavorite } from '../lib/api';
+import Icon from 'react-native-vector-icons/Feather';
 
 export default function ProductDetail({ route, navigation }) {
   const { product } = route.params || {};
@@ -9,6 +11,42 @@ export default function ProductDetail({ route, navigation }) {
   const [selectedTime, setSelectedTime] = useState(null);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [isFavorite, setIsFavorite] = useState(false);
+
+
+  React.useEffect(() => {
+    checkFavorite();
+  }, [product]);
+
+  const checkFavorite = async () => {
+    try {
+      if (product) {
+        const favs = await getFavorites();
+        setIsFavorite(favs.includes(product.id));
+      }
+    } catch (e) {
+      // Not logged in or error
+    }
+  };
+
+  const toggleFavorite = async () => {
+    try {
+      if (isFavorite) {
+        await removeFavorite(product.id);
+        setIsFavorite(false);
+        setToastMessage('Poistettu suosikeista');
+      } else {
+        await addFavorite(product.id);
+        setIsFavorite(true);
+        setToastMessage('Lisätty suosikkeihin');
+      }
+      setToastVisible(true);
+    } catch (e) {
+      // Alert.alert is not imported in this version, fallback to Toast
+      setToastMessage('Kirjaudu sisään ensin');
+      setToastVisible(true);
+    }
+  };
 
   const dates = ['Tänään', 'Huomenna', 'Ylihuomenna'];
   const times = ['10:00 - 12:00', '12:00 - 14:00', '14:00 - 16:00', '16:00 - 18:00'];
@@ -44,7 +82,12 @@ export default function ProductDetail({ route, navigation }) {
           {Array.isArray(product.photos) && product.photos[0] ? (
             <Image source={{ uri: product.photos[0] }} style={styles.heroImage} resizeMode="cover" />
           ) : null}
-          <Text style={styles.name}>{product.name}</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.name}>{product.name}</Text>
+            <TouchableOpacity onPress={toggleFavorite}>
+              <Icon name="heart" size={28} color={isFavorite ? "#ff4757" : "#ccc"} style={isFavorite ? {backgroundColor: '#ff4757'} : {}} />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.type}>{product.type?.replace('_', ' ') || 'Varuste'}</Text>
           <Text style={styles.price}>{product.price}</Text>
           <Text style={styles.rating}>{product.rating ? `${product.rating}/5` : 'Ei arvosteluja vielä'}</Text>
@@ -101,7 +144,8 @@ const styles = StyleSheet.create({
   container: { padding: 16, paddingBottom: 40 },
   card: { backgroundColor: '#fff', borderRadius: 18, padding: 20, borderWidth: 1, borderColor: '#e3eaef' },
   heroImage: { width: '100%', height: 180, borderRadius: 12, marginBottom: 12, backgroundColor: '#e8eef2' },
-  name: { fontSize: 22, fontWeight: '800', marginBottom: 6, color: '#0f2f3d' },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  name: { fontSize: 22, fontWeight: '800', color: '#0f2f3d', flex: 1 },
   type: { fontSize: 14, color: '#15948b', fontWeight: '700', marginBottom: 10, textTransform: 'capitalize' },
   price: { fontSize: 18, fontWeight: '700', marginBottom: 6, color: '#1f3d55' },
   rating: { fontSize: 14, color: '#15948b', marginBottom: 12, fontWeight: '700' },
