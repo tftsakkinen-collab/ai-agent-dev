@@ -17,6 +17,8 @@ import AdminOpsScreen from './src/screens/AdminOpsScreen';
 import BecomeHostScreen from './src/screens/BecomeHostScreen';
 import TermsSafetyScreen from './src/screens/TermsSafetyScreen';
 import ChatScreen from './src/screens/ChatScreen';
+import TermsOfServiceScreen from './src/screens/TermsOfServiceScreen';
+import PrivacyPolicyScreen from './src/screens/PrivacyPolicyScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -44,6 +46,8 @@ export default function App() {
           <Stack.Screen name="AdminOps" component={AdminOpsScreen} />
           <Stack.Screen name="BecomeHost" component={BecomeHostScreen} />
           <Stack.Screen name="TermsSafety" component={TermsSafetyScreen} />
+          <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} />
+          <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
           <Stack.Screen name="Auth" component={AuthScreen} />
           <Stack.Screen name="MapSearch" component={MapSearchScreen} />
         </Stack.Navigator>

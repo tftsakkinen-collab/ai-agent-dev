@@ -56,7 +56,11 @@ const authProvider = createAuthProvider({
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY
 });
 
-app.use(cors());
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production' ? process.env.ALLOWED_ORIGINS?.split(',') || [] : '*',
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use((req, res, next) => {
   const incomingRequestId = String(req.headers['x-request-id'] || '').trim();

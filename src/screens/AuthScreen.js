@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+
 import { login, requestLoginCode, verifyLoginCode } from '../lib/api';
 
 export default function AuthScreen({ navigation }) {
@@ -109,6 +110,19 @@ export default function AuthScreen({ navigation }) {
           <Text style={styles.ghostButtonText}>Lähetä kirjautumiskoodi</Text>
         </TouchableOpacity>
       )}
+
+      <View style={styles.legalContainer}>
+        <Text style={styles.legalText}>Käyttämällä palvelua hyväksyt</Text>
+        <View style={styles.legalLinks}>
+          <TouchableOpacity onPress={() => navigation.navigate('TermsOfService')}>
+            <Text style={styles.legalLink}>Käyttöehdot</Text>
+          </TouchableOpacity>
+          <Text style={styles.legalText}> ja </Text>
+          <TouchableOpacity onPress={() => navigation.navigate('PrivacyPolicy')}>
+            <Text style={styles.legalLink}>Tietosuojaselosteen</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     </View>
   );
 }
@@ -124,5 +138,9 @@ const styles = StyleSheet.create({
   secondaryButton: { marginTop: 10, paddingVertical: 12, borderRadius: 14, alignItems: 'center', borderWidth: 1, borderColor: '#c9d5df', backgroundColor: '#fff' },
   secondaryButtonText: { color: '#0f2f3d', fontWeight: '700' },
   ghostButton: { marginTop: 10, paddingVertical: 10, borderRadius: 12, alignItems: 'center' },
-  ghostButtonText: { color: '#15948b', fontWeight: '700' }
+  ghostButtonText: { color: '#15948b', fontWeight: '700' },
+  legalContainer: { marginTop: 40, alignItems: 'center' },
+  legalText: { color: '#7a8b94', fontSize: 13 },
+  legalLinks: { flexDirection: 'row', marginTop: 4 },
+  legalLink: { color: '#15948b', fontSize: 13, textDecorationLine: 'underline' }
 });
