@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { SafeAreaView, View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import { SafeAreaView, View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
 import { fetchJson, getProfile } from '../lib/api';
+import { useToast } from '../contexts/ToastContext';
 
 const paymentMethods = [
   { id: 'visa', label: 'Visa' },
@@ -10,6 +11,7 @@ const paymentMethods = [
 ];
 
 export default function BookingScreen({ route, navigation }) {
+  const { showToast } = useToast();
   const { product, selectedDate, selectedTime } = route.params || {};
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -25,11 +27,11 @@ export default function BookingScreen({ route, navigation }) {
   }, []);
 
   const submit = async () => {
-    if (!name) return Alert.alert('Täytä nimi');
-    if (!email) return Alert.alert('Kirjaudu ensin sisään', 'Tarvitsemme vahvistetun sähköpostin varaukselle.');
-    if (!product) return Alert.alert('Tuote puuttuu');
-    if (cardLast4.trim().length < 4) return Alert.alert('Täytä maksutavan tunniste', 'Anna vähintään 4 numeroa mock-maksua varten.');
-    if (!termsAccepted || !safetyAccepted) return Alert.alert('Hyväksynnät puuttuvat', 'Hyväksy ehdot ja turvallisuuschecklist ennen varausta.');
+    if (!name) return showToast('Täytä nimi');
+    if (!email) return showToast('Kirjaudu ensin sisään', 'Tarvitsemme vahvistetun sähköpostin varaukselle.');
+    if (!product) return showToast('Tuote puuttuu');
+    if (cardLast4.trim().length < 4) return showToast('Täytä maksutavan tunniste', 'Anna vähintään 4 numeroa mock-maksua varten.');
+    if (!termsAccepted || !safetyAccepted) return showToast('Hyväksynnät puuttuvat', 'Hyväksy ehdot ja turvallisuuschecklist ennen varausta.');
 
     try {
       const booking = await fetchJson('/api/bookings', {
@@ -46,13 +48,13 @@ export default function BookingScreen({ route, navigation }) {
           selectedTime
         })
       });
-      Alert.alert('Mock-maksu onnistui', `Varaus vahvistettu. Maksun tila: ${booking.paymentStatus}.`);
+      showToast('Mock-maksu onnistui', `Varaus vahvistettu. Maksun tila: ${booking.paymentStatus}.`);
       navigation.navigate('Profile');
     } catch (error) {
       if (error.message === 'Unauthorized') {
-        return Alert.alert('Kirjaudu ensin sisään', 'Varausten tekeminen vaatii kirjautumisen.');
+        return showToast('Kirjaudu ensin sisään', 'Varausten tekeminen vaatii kirjautumisen.');
       }
-      Alert.alert('Varauksen luonti epäonnistui', error.message);
+      showToast('Varauksen luonti epäonnistui', error.message);
     }
   };
 

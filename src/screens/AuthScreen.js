@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
 
-import { login, requestLoginCode, verifyLoginCode } from '../lib/api';
+import { requestLoginCode, verifyLoginCode } from '../lib/api';
+import { useToast } from '../contexts/ToastContext';
 
 export default function AuthScreen({ navigation }) {
+  const { showToast } = useToast();
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [codeRequested, setCodeRequested] = useState(false);
@@ -21,37 +23,23 @@ export default function AuthScreen({ navigation }) {
     }
   }, [email]);
 
-  const handleQuickLogin = async () => {
-    const normalizedEmail = String(email || '').trim().toLowerCase();
-    if (!normalizedEmail) return Alert.alert('Anna sähköposti');
 
-    try {
-      setLoading(true);
-      await login(normalizedEmail);
-      Alert.alert('Kirjautuminen onnistui');
-      navigation.navigate('Home');
-    } catch (e) {
-      Alert.alert('Nopea kirjautuminen epäonnistui', e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleRequestCode = async () => {
     const normalizedEmail = String(email || '').trim().toLowerCase();
-    if (!normalizedEmail) return Alert.alert('Anna sähköposti');
+    if (!normalizedEmail) return showToast('Anna sähköposti');
 
     try {
       setLoading(true);
       const response = await requestLoginCode(normalizedEmail);
       setCodeRequested(true);
       if (response.devCode) {
-        Alert.alert('Koodi lähetetty (dev)', `Koodisi on ${response.devCode}`);
+        showToast('Koodi lähetetty (dev)', `Koodisi on ${response.devCode}`);
       } else {
-        Alert.alert('Koodi lähetetty', 'Tarkista sähköposti ja syötä 6-numeroinen koodi.');
+        showToast('Koodi lähetetty', 'Tarkista sähköposti ja syötä 6-numeroinen koodi.');
       }
     } catch (e) {
-      Alert.alert('Koodin lähetys epäonnistui', e.message);
+      showToast('Koodin lähetys epäonnistui', e.message);
     } finally {
       setLoading(false);
     }
@@ -59,16 +47,16 @@ export default function AuthScreen({ navigation }) {
 
   const handleVerifyCode = async () => {
     const normalizedEmail = String(email || '').trim().toLowerCase();
-    if (!normalizedEmail) return Alert.alert('Anna sähköposti');
-    if (!code || code.length < 6) return Alert.alert('Anna 6-numeroinen koodi');
+    if (!normalizedEmail) return showToast('Anna sähköposti');
+    if (!code || code.length < 6) return showToast('Anna 6-numeroinen koodi');
 
     try {
       setLoading(true);
       await verifyLoginCode(normalizedEmail, code);
-      Alert.alert('Kirjautuminen onnistui');
+      showToast('Kirjautuminen onnistui');
       navigation.navigate('Home');
     } catch (e) {
-      Alert.alert('Kirjautuminen epäonnistui', e.message);
+      showToast('Kirjautuminen epäonnistui', e.message);
     } finally {
       setLoading(false);
     }
@@ -77,18 +65,14 @@ export default function AuthScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Kirjaudu sähköpostilla</Text>
-      <Text style={styles.subtitle}>Jos linkin kautta jumittaa, käytä nopeaa kirjautumista ja jatka suoraan sovellukseen.</Text>
+      <Text style={styles.subtitle}>Syötä sähköpostiosoitteesi saadaksesi kirjautumiskoodin.</Text>
       <TextInput placeholder="Sähköposti" value={email} onChangeText={setEmail} style={styles.input} keyboardType="email-address" />
 
-      <TouchableOpacity style={[styles.primaryButton, loading && styles.buttonDisabled]} onPress={handleQuickLogin} disabled={loading}>
-        <Text style={styles.primaryButtonText}>{loading ? 'Kirjaudutaan...' : 'Nopea kirjautuminen'}</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.secondaryButton} onPress={() => setCodeRequested((prev) => !prev)}>
-        <Text style={styles.secondaryButtonText}>{codeRequested ? 'Piilota koodikirjautuminen' : 'Käytä koodikirjautumista'}</Text>
-      </TouchableOpacity>
-
-      {codeRequested ? (
+      {!codeRequested ? (
+        <TouchableOpacity style={[styles.primaryButton, loading && styles.buttonDisabled]} onPress={handleRequestCode} disabled={loading}>
+          <Text style={styles.primaryButtonText}>{loading ? 'Lähetetään...' : 'Lähetä kirjautumiskoodi'}</Text>
+        </TouchableOpacity>
+      ) : (
         <>
           <TextInput
             placeholder="6-numeroinen koodi"
@@ -99,16 +83,12 @@ export default function AuthScreen({ navigation }) {
             maxLength={6}
           />
           <TouchableOpacity style={[styles.primaryButton, loading && styles.buttonDisabled]} onPress={handleVerifyCode} disabled={loading}>
-            <Text style={styles.primaryButtonText}>Vahvista ja kirjaudu</Text>
+            <Text style={styles.primaryButtonText}>{loading ? 'Vahvistetaan...' : 'Vahvista ja kirjaudu'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryButton} onPress={handleRequestCode}>
-            <Text style={styles.secondaryButtonText}>Lähetä koodi uudelleen</Text>
+          <TouchableOpacity style={styles.ghostButton} onPress={handleRequestCode} disabled={loading}>
+            <Text style={styles.ghostButtonText}>Lähetä koodi uudelleen</Text>
           </TouchableOpacity>
         </>
-      ) : (
-        <TouchableOpacity style={styles.ghostButton} onPress={handleRequestCode}>
-          <Text style={styles.ghostButtonText}>Lähetä kirjautumiskoodi</Text>
-        </TouchableOpacity>
       )}
 
       <View style={styles.legalContainer}>

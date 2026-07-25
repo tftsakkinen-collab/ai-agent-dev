@@ -5,6 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
 const { createAuthProvider } = require('./authProvider');
+const { getStoreValue, setStoreValue, clearDb } = require('./sqlite-store'); // eslint-disable-line no-unused-vars
 const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } });
 const app = express();
 const port = process.env.PORT || 3000;
@@ -191,7 +192,7 @@ const categories = [
 let bookings = [];
 let dynamicReviews = [];
 let ownerListings = [];
-let users = {}; // userId -> { email, name, phone, avatarUrl }
+
 const feedbackReports = [];
 
 const notifications = [];
@@ -565,10 +566,6 @@ function signPayload(payloadBase64) {
 }
 
 function buildAuthToken(email) {
-  const userId = buildUserIdFromEmail(email);
-  if (!users[userId]) {
-    users[userId] = { id: userId, email, name: '', phone: '', avatarUrl: '' };
-  }
   const payload = {
     email,
     userId: buildUserIdFromEmail(email),
@@ -759,15 +756,7 @@ app.post('/api/auth/verify-code', async (req, res) => {
   return res.json({ token, email, userId: buildUserIdFromEmail(email) });
 });
 
-// Backward-compatible endpoint for existing tests and clients.
-app.post('/api/auth/login', (req, res) => {
-  const email = normalizeEmail(req.body?.email);
-  if (!isValidEmail(email)) {
-    return res.status(400).json({ error: 'Valid email required' });
-  }
-  const token = buildAuthToken(email);
-  return res.json({ token, email, userId: buildUserIdFromEmail(email) });
-});
+
 
 app.get('/api/auth/provider-status', (req, res) => {
   return res.json(authProvider.getPublicStatus());
@@ -836,27 +825,7 @@ function getSession(req) {
   return parseAuthToken(token);
 }
 
-app.get('/api/me', (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-  const user = users[session.userId] || { id: session.userId, email: session.email };
-  return res.json(user);
-});
 
-app.patch('/api/me', (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const { name, phone } = req.body;
-  if (!users[session.userId]) {
-      users[session.userId] = { id: session.userId, email: session.email };
-  }
-
-  if (name !== undefined) users[session.userId].name = name;
-  if (phone !== undefined) users[session.userId].phone = phone;
-
-  return res.json(users[session.userId]);
-});
 
 
 app.get('/api/bookings', async (req, res) => {
@@ -1926,6 +1895,11 @@ app.patch('/api/notifications/:id/read', async (req, res) => {
     return res.json(notif);
   }
   res.status(404).json({error: 'Not found'});
+});
+
+app.post('/api/admin/clear-db', async (req, res) => {
+  await clearDb();
+  res.json({ ok: true });
 });
 
 module.exports = app;

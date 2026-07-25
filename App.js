@@ -11,6 +11,7 @@ import ProviderDetail from './src/screens/ProviderDetail';
 import ReviewScreen from './src/screens/ReviewScreen';
 import RenterReviewScreen from './src/screens/RenterReviewScreen';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
+import { ToastProvider } from './src/contexts/ToastContext';
 import ReportIssueButton from './src/components/ReportIssueButton';
 import FeedbackReportsScreen from './src/screens/FeedbackReportsScreen';
 import AdminOpsScreen from './src/screens/AdminOpsScreen';
@@ -28,6 +29,7 @@ export default function App() {
 
   return (
     <AppErrorBoundary routeName={routeName}>
+      <ToastProvider>
       <NavigationContainer
         ref={navigationRef}
         onReady={() => setRouteName(navigationRef.current?.getCurrentRoute()?.name || 'Home')}
@@ -53,6 +55,7 @@ export default function App() {
         </Stack.Navigator>
         <ReportIssueButton routeName={routeName} />
       </NavigationContainer>
+      </ToastProvider>
     </AppErrorBoundary>
   );
 }

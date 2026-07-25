@@ -52,8 +52,7 @@ function createAuthProvider(options = {}) {
       }
 
       try {
-        const redirectUrl = process.env.SUPABASE_REDIRECT_URL || 'http://localhost:3000/verify-magic-link';
-        const response = await fetch(`${supabaseUrl}/auth/v1/otp`, {
+                const response = await fetch(`${supabaseUrl}/auth/v1/otp`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

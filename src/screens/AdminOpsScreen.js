@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { SafeAreaView, View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { SafeAreaView, View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
 import { getAdminDisputes, getAdminListings, getAdminPilotMetrics, getAuthAuditLogs, getAuthProviderStatus, getListingModerationThroughput, moderateAdminListing, resolveAdminDispute } from '../lib/api';
+import { useToast } from '../contexts/ToastContext';
 
 export default function AdminOpsScreen() {
+  const { showToast } = useToast();
   const [disputes, setDisputes] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [pilotMetrics, setPilotMetrics] = useState(null);
@@ -32,7 +34,7 @@ export default function AdminOpsScreen() {
       setPendingListings(pendingData || []);
       setThroughputMetrics(throughputData || null);
     } catch (error) {
-      Alert.alert('Admin-datan haku epäonnistui', error.message);
+      showToast('Admin-datan haku epäonnistui', error.message);
     } finally {
       setLoading(false);
     }
@@ -45,10 +47,10 @@ export default function AdminOpsScreen() {
         moderationStatus,
         moderationStatus === 'approved' ? 'Approved via admin panel' : 'Rejected via admin panel'
       );
-      Alert.alert('Listing päivitetty', `Tila: ${moderationStatus}`);
+      showToast('Listing päivitetty', `Tila: ${moderationStatus}`);
       loadData();
     } catch (error) {
-      Alert.alert('Listingin päivitys epäonnistui', error.message);
+      showToast('Listingin päivitys epäonnistui', error.message);
     }
   };
 
@@ -64,10 +66,10 @@ export default function AdminOpsScreen() {
         resolutionStatus === 'resolved' ? 'Resolved via admin panel' : 'Rejected via admin panel',
         true
       );
-      Alert.alert('Päivitetty', `Dispute merkittiin tilaan: ${resolutionStatus}`);
+      showToast('Päivitetty', `Dispute merkittiin tilaan: ${resolutionStatus}`);
       loadData();
     } catch (error) {
-      Alert.alert('Disputen päivitys epäonnistui', error.message);
+      showToast('Disputen päivitys epäonnistui', error.message);
     }
   };
 

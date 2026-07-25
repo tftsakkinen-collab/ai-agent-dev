@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { SafeAreaView, View, Text, FlatList, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput, Image } from 'react-native';
+import { SafeAreaView, View, Text, FlatList, StyleSheet, TouchableOpacity, ScrollView, TextInput, Image } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
+import BookingItem from '../components/BookingItem';
+import FavoriteItem from '../components/FavoriteItem';
+import { useToast } from '../contexts/ToastContext';
 import {
   claimBookingDeposit,
   fetchJson,
@@ -15,6 +18,7 @@ import {
 } from '../lib/api';
 
 export default function ProfileScreen({ navigation }) {
+  const { showToast } = useToast();
   const [bookings, setBookings] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [reviews, setReviews] = useState([]);
@@ -46,9 +50,6 @@ export default function ProfileScreen({ navigation }) {
       setEditName(profileData.name || '');
       setEditPhone(profileData.phone || '');
       setFavorites(favoritesData || []);
-      setEditName(profileData.name || '');
-      setEditPhone(profileData.phone || '');
-      setFavorites(favoritesData || []);
       setBookings(bookingsData);
       setReviews(reviewsData);
       setLoginRequired(false);
@@ -57,7 +58,6 @@ export default function ProfileScreen({ navigation }) {
       setProfile(null);
       setBookings([]);
       setReviews([]);
-      setFavorites([]);
       setFavorites([]);
     }
   };
@@ -72,7 +72,7 @@ export default function ProfileScreen({ navigation }) {
       setProfile({ ...profile, name: editName, phone: editPhone });
       setIsEditing(false);
     } catch (e) {
-      Alert.alert('Virhe', 'Profiilin päivitys epäonnistui');
+      showToast('Virhe', 'Profiilin päivitys epäonnistui');
     }
   };
 
@@ -85,27 +85,13 @@ export default function ProfileScreen({ navigation }) {
     setReviews([]);
   };
 
-  const handleRefund = async (bookingId) => {
-    try {
-      await fetchJson(`/api/bookings/${bookingId}/refund`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: 'customer_request' })
-      });
-      Alert.alert('Palautus kirjattu', 'Mock-palautus tehtiin onnistuneesti.');
-      fetchMyData();
-    } catch (error) {
-      Alert.alert('Palautus epaonnistui', error.message);
-    }
-  };
-
   const runBookingAction = async (bookingId, actionName, actionFn) => {
     try {
       await actionFn();
-      Alert.alert('Toiminto onnistui', actionName);
+      showToast('Toiminto onnistui', actionName);
       fetchMyData();
     } catch (error) {
-      Alert.alert('Toiminto epäonnistui', error.message);
+      showToast('Toiminto epäonnistui', error.message);
     }
   };
 
@@ -272,10 +258,10 @@ export default function ProfileScreen({ navigation }) {
           onPress={async () => {
             try {
               const data = await getBookingReviews(item.id);
-              Alert.alert('Review näkyvyys', `Tila: ${data.visibility}\nArvioita näkyvissä: ${data.reviews?.length || 0}`);
+              showToast('Review näkyvyys', `Tila: ${data.visibility}\nArvioita näkyvissä: ${data.reviews?.length || 0}`);
               fetchMyData();
             } catch (error) {
-              Alert.alert('Review-haku epäonnistui', error.message);
+              showToast('Review-haku epäonnistui', error.message);
             }
           }}
         >
@@ -320,17 +306,6 @@ export default function ProfileScreen({ navigation }) {
             )}
           </View>
         )}
-        {favorites && favorites.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Suosikit</Text>
-            {favorites.map(favId => (
-              <TouchableOpacity key={favId} style={styles.item} onPress={() => navigation.navigate('ProductDetail', { product: {id: favId} })}>
-                <Text style={styles.itemTitle}>{favId}</Text>
-                <Text style={styles.itemMeta}>Tallennettu suosikkeihin</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
         {loginRequired ? (
           <View style={styles.card}>
             <Text style={styles.info}>Kirjaudu sisään nähdäksesi varaukset ja arvostelut.</Text>
@@ -372,10 +347,7 @@ export default function ProfileScreen({ navigation }) {
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Suosikit</Text>
                 {favorites.map(favId => (
-                  <TouchableOpacity key={favId} style={styles.item} onPress={() => navigation.navigate('ProductDetail', { product: {id: favId} })}>
-                    <Text style={styles.itemTitle}>{favId}</Text>
-                    <Text style={styles.itemMeta}>Tallennettu suosikkeihin</Text>
-                  </TouchableOpacity>
+                  <FavoriteItem key={favId} favId={favId} onPress={() => navigation.navigate('ProductDetail', { product: {id: favId} })} />
                 ))}
               </View>
             )}
@@ -398,28 +370,7 @@ export default function ProfileScreen({ navigation }) {
                 keyExtractor={(i) => i.id}
                 ListEmptyComponent={<Text style={styles.emptyText}>Ei varauksia.</Text>}
                 renderItem={({ item }) => (
-                  <View style={styles.item}>
-                    <Text style={styles.itemTitle}>{item.product?.name || item.productId}</Text>
-                    <Text style={styles.itemMeta}>{item.name} — {item.email}</Text>
-                    {item.selectedDate && item.selectedTime ? (
-                      <Text style={styles.itemMeta}>Aika: {item.selectedDate} klo {item.selectedTime}</Text>
-                    ) : null}
-                    <Text style={styles.itemMeta}>Varaus: {item.bookingStatus} · Maksu: {item.paymentStatus}</Text>
-                    <Text style={styles.itemMeta}>Stage: {item.bookingStage || 'approved'}</Text>
-                    <Text style={styles.itemMeta}>Pantti: {item.depositStatus || 'not_required'} ({item.depositAmount || 0} EUR)</Text>
-                    {item.reviewFlow ? <Text style={styles.itemMeta}>Review näkyvyys: {item.reviewFlow.visibility}</Text> : null}
-                    <Text style={styles.itemMeta}>{item.paymentSummary}</Text>
-                    {item.refundedAt ? <Text style={styles.itemMeta}>Palautettu: {new Date(item.refundedAt).toLocaleString()}</Text> : null}
-                    <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('Chat', { bookingId: item.id, productTitle: item.product?.name })}>
-                        <Text style={styles.secondaryButtonText}>Viestit</Text>
-                      </TouchableOpacity>
-                    {item.paymentStatus === 'paid' ? (
-                      <TouchableOpacity style={styles.secondaryButton} onPress={() => handleRefund(item.id)}>
-                        <Text style={styles.secondaryButtonText}>Tee mock-palautus</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                    {renderBookingActions(item)}
-                  </View>
+                  <BookingItem item={item} navigation={navigation} renderActions={renderBookingActions} />
                 )}
               />
             </View>

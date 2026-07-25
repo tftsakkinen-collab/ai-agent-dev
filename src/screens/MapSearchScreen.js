@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, FlatList, Linking, Alert, SafeAreaView, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, StyleSheet, FlatList, Linking, SafeAreaView, TouchableOpacity } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
 import { fetchJson } from '../lib/api';
+import { useToast } from '../contexts/ToastContext';
 
 export default function MapSearchScreen({ route }) {
+  const { showToast } = useToast();
   const initialQuery = route?.params?.initialQuery || '';
   const [search, setSearch] = useState(initialQuery);
   const [locations, setLocations] = useState([]);
@@ -19,7 +21,7 @@ export default function MapSearchScreen({ route }) {
       const data = await fetchJson(`/api/locations?q=${encodeURIComponent(query)}`);
       setLocations(data);
     } catch (error) {
-      Alert.alert('Virhe', 'Sijainteja ei voitu hakea. Tarkista palvelin.');
+      showToast('Virhe', 'Sijainteja ei voitu hakea. Tarkista palvelin.');
       setLocations([]);
     } finally {
       setLoading(false);
@@ -33,7 +35,7 @@ export default function MapSearchScreen({ route }) {
   const openGoogleMaps = (query) => {
     const url = `https://www.google.com/maps/search/${encodeURIComponent(query)}`;
     Linking.openURL(url).catch(() => {
-      Alert.alert('Virhe', 'Ei voitu avata Google Mapsia.');
+      showToast('Virhe', 'Ei voitu avata Google Mapsia.');
     });
   };
 
