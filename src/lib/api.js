@@ -1,13 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const ENV_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || process.env.API_BASE_URL;
-const WEB_DEFAULT_BASE_URL =
-  typeof window !== 'undefined' && window.location
-    ? window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      ? `${window.location.protocol}//${window.location.hostname}:3000`
-      : `${window.location.protocol}//${window.location.host}`
-    : 'http://localhost:3000';
-const BASE_URL = ENV_BASE_URL || WEB_DEFAULT_BASE_URL;
+import { API_BASE_URL } from '../config';
+const BASE_URL = API_BASE_URL;
 
 function buildUrl(path) {
   if (!path) return BASE_URL;

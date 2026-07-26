@@ -45,7 +45,7 @@ test('login, booking and review flow works with auth token', async () => {
       safetyChecklistAccepted: true
     })
   });
-  expect(bookingRes.status).toBe(200);
+  expect(bookingRes.status).toBe(201);
 
   const bookingJson = await bookingRes.json();
   expect(bookingJson.productId).toBe(productId);
@@ -187,7 +187,7 @@ test('booking lifecycle transitions and deposit evidence flow work', async () =>
       safetyChecklistAccepted: true
     })
   });
-  expect(bookingRes.status).toBe(200);
+  expect(bookingRes.status).toBe(201);
   const booking = await bookingRes.json();
   expect(booking.bookingStage).toBe('approved');
 
@@ -337,7 +337,7 @@ test('double-blind booking reviews stay hidden until both are submitted', async 
       safetyChecklistAccepted: true
     })
   });
-  expect(bookingRes.status).toBe(200);
+  expect(bookingRes.status).toBe(201);
   const booking = await bookingRes.json();
 
   // Fast-path this booking to completed stage.
@@ -464,7 +464,7 @@ test('admin can resolve disputed booking', async () => {
       safetyChecklistAccepted: true
     })
   });
-  expect(bookingRes.status).toBe(200);
+  expect(bookingRes.status).toBe(201);
   const booking = await bookingRes.json();
 
   const disputeRes = await fetch(`http://localhost:3000/api/bookings/${booking.id}/dispute`, {

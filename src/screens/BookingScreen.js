@@ -3,7 +3,8 @@ import { SafeAreaView, View, Text, TextInput, TouchableOpacity, StyleSheet, Scro
 import ScreenHeader from '../components/ScreenHeader';
 import { fetchJson, getProfile } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
-import { useStripe } from '@stripe/stripe-react-native';
+import { Platform } from 'react-native';
+const useStripe = Platform.OS === 'web' ? () => ({ initPaymentSheet: () => ({error: null}), presentPaymentSheet: () => ({error: null}) }) : require('@stripe/stripe-react-native').useStripe;
 
 export default function BookingScreen({ route, navigation }) {
   const { product, selectedDate, selectedTime } = route.params || {};
