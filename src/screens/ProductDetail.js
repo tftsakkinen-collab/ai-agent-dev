@@ -48,7 +48,17 @@ export default function ProductDetail({ route, navigation }) {
     }
   };
 
-  const dates = ['Tänään', 'Huomenna', 'Ylihuomenna'];
+  const today = new Date();
+  const getDayStr = (offset) => {
+    const d = new Date();
+    d.setDate(today.getDate() + offset);
+    return `${d.getDate()}.${d.getMonth() + 1}.`;
+  };
+  const dates = [
+    `Tänään (${getDayStr(0)})`,
+    `Huomenna (${getDayStr(1)})`,
+    `Ylihuomenna (${getDayStr(2)})`
+  ];
   const times = ['10:00 - 12:00', '12:00 - 14:00', '14:00 - 16:00', '16:00 - 18:00'];
 
   const handleAction = () => {
@@ -57,7 +67,8 @@ export default function ProductDetail({ route, navigation }) {
       setToastVisible(true);
       return;
     }
-    navigation.navigate('TermsSafety', { product, selectedDate, selectedTime });
+    // Suoraan varaukseen ilman väliklikkauksia, ehdot ja säännöt vahvistetaan siellä.
+    navigation.navigate('Booking', { product, selectedDate, selectedTime });
   };
 
   if (!product) return (

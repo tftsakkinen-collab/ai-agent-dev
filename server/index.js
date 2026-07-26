@@ -63,8 +63,6 @@ const corsOptions = {
   optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
-// Webhook requires raw body
-app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 app.use((req, res, next) => {
   const incomingRequestId = String(req.headers['x-request-id'] || '').trim();
@@ -191,10 +189,11 @@ const categories = [
   { id: 'oulu-sup', title: 'Oulu SUP Pilot', label: 'SUP-laudat Oulun alueella', query: 'oulu sup' }
 ];
 
-// In-memory fallbacks if SQLite fails (which it shouldn't)
+// Simple in-memory bookings store
 let bookings = [];
 let dynamicReviews = [];
 let ownerListings = [];
+let users = {}; // userId -> { email, name, phone, avatarUrl }
 const feedbackReports = [];
 
 const notifications = [];
@@ -568,6 +567,10 @@ function signPayload(payloadBase64) {
 }
 
 function buildAuthToken(email) {
+  const userId = buildUserIdFromEmail(email);
+  if (!users[userId]) {
+    users[userId] = { id: userId, email, name: '', phone: '', avatarUrl: '' };
+  }
   const payload = {
     email,
     userId: buildUserIdFromEmail(email),
@@ -835,7 +838,27 @@ function getSession(req) {
   return parseAuthToken(token);
 }
 
+app.get('/api/me', (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  const user = users[session.userId] || { id: session.userId, email: session.email };
+  return res.json(user);
+});
 
+app.patch('/api/me', (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { name, phone } = req.body;
+  if (!users[session.userId]) {
+      users[session.userId] = { id: session.userId, email: session.email };
+  }
+
+  if (name !== undefined) users[session.userId].name = name;
+  if (phone !== undefined) users[session.userId].phone = phone;
+
+  return res.json(users[session.userId]);
+});
 
 
 app.get('/api/bookings', async (req, res) => {
@@ -865,9 +888,7 @@ app.post('/api/bookings', async (req, res) => {
   const amountToCharge = pricePerHour * 100; // in cents
 
   let paymentIntent;
-  // Fallback testing flow explicitly bypasses Stripe initialization
-  const isMock = paymentMethod !== 'stripe';
-  if (!isMock) {
+  if (paymentMethod === 'stripe') {
     try {
       paymentIntent = await stripe.paymentIntents.create({
         amount: amountToCharge,
@@ -897,7 +918,7 @@ app.post('/api/bookings', async (req, res) => {
     bookingStatus: 'pending',
     bookingStage: 'pending_payment',
     paymentStatus: 'pending',
-    paymentIntentId: paymentIntent ? paymentIntent.id : null,
+    paymentIntentId: typeof paymentIntent !== 'undefined' && paymentIntent ? paymentIntent.id : null,
     refundStatus: 'not_requested',
     consentVersion: '2026-07-sup-oulu-v1',
     termsAcceptedAt: new Date().toISOString(),
@@ -929,7 +950,7 @@ app.post('/api/bookings', async (req, res) => {
     createdAt: new Date().toISOString()
   };
 
-  if (paymentMethod !== 'stripe' || process.env.NODE_ENV === 'test' || process.env.CI === 'true') {
+  if (paymentMethod !== 'stripe') {
       booking.paymentStatus = 'paid';
       booking.bookingStatus = 'confirmed';
       booking.bookingStage = BOOKING_STAGE.APPROVED;
@@ -948,7 +969,7 @@ app.post('/api/bookings', async (req, res) => {
   await saveNotifications(notifs);
   await saveBookings(allBookings);
 
-  res.status(201).json({ ...getSafeBookingView(booking), clientSecret: paymentIntent ? paymentIntent.client_secret : null });
+  res.status(200).json({ ...getSafeBookingView(booking), clientSecret: typeof paymentIntent !== 'undefined' && paymentIntent ? paymentIntent.client_secret : null });
 });
 
 app.post('/api/bookings/:id/refund', async (req, res) => {
@@ -1958,7 +1979,7 @@ app.patch('/api/notifications/:id/read', async (req, res) => {
 
 
 // Stripe Webhook Endpoint
-app.post('/api/stripe/webhook', async (req, res) => {
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
   const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -2020,51 +2041,6 @@ app.post('/api/stripe/webhook', async (req, res) => {
   }
 
   res.json({ received: true });
-});
-
-
-app.get('/api/bookings/:id/messages', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-  const allBookings = await readBookings();
-  const booking = allBookings.find(b => b.id === req.params.id);
-  if (!booking) return res.status(404).json({ error: 'Booking not found' });
-
-  // Basic authorization: user must be the renter or the admin/provider
-  if (booking.renterUserId !== session.userId && session.email !== 'admin@gearspot.fi') {
-      // Allow provider/owner as well, simplified check:
-      if (booking.product.providerId !== session.userId && !booking.product.providerId.includes(session.email)) {
-         return res.status(403).json({ error: 'Forbidden' });
-      }
-  }
-
-  res.json(booking.messages || []);
-});
-
-app.post('/api/bookings/:id/messages', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-  const allBookings = await readBookings();
-  const booking = allBookings.find(b => b.id === req.params.id);
-  if (!booking) return res.status(404).json({ error: 'Booking not found' });
-
-  if (!booking.messages) booking.messages = [];
-
-  const { text } = req.body;
-  if (!text) return res.status(400).json({ error: 'Message text is required' });
-
-  const newMessage = {
-      id: `msg-${Date.now()}`,
-      senderId: session.userId,
-      senderName: session.email.split('@')[0], // simple fallback
-      text,
-      createdAt: new Date().toISOString()
-  };
-
-  booking.messages.push(newMessage);
-  await saveBookings(allBookings);
-
-  res.status(201).json(newMessage);
 });
 
 module.exports = app;

@@ -296,41 +296,7 @@ export default function ProfileScreen({ navigation }) {
           actionLabel={profile ? 'Kirjaudu ulos' : 'Kirjaudu'}
           onAction={profile ? handleLogout : () => navigation.navigate('Auth')}
         />
-        {profile && !loginRequired && (
-          <View style={styles.card}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
-              <Text style={styles.sectionTitle}>Omat tiedot</Text>
-              <TouchableOpacity onPress={() => isEditing ? handleSaveProfile() : setIsEditing(true)}>
-                <Text style={{ color: '#15948b', fontWeight: 'bold' }}>{isEditing ? 'Tallenna' : 'Muokkaa'}</Text>
-              </TouchableOpacity>
-            </View>
-            {isEditing ? (
-              <View>
-                <Text style={styles.inputLabel}>Nimi</Text>
-                <TextInput style={styles.input} value={editName} onChangeText={setEditName} placeholder="Etunimi Sukunimi" />
-                <Text style={styles.inputLabel}>Puhelinnumero</Text>
-                <TextInput style={styles.input} value={editPhone} onChangeText={setEditPhone} placeholder="040 123 4567" keyboardType="phone-pad" />
-              </View>
-            ) : (
-              <View>
-                <Text style={styles.info}>Nimi: {profile.name || 'Ei asetettu'}</Text>
-                <Text style={styles.info}>Sähköposti: {profile.email}</Text>
-                <Text style={styles.info}>Puhelin: {profile.phone || 'Ei asetettu'}</Text>
-              </View>
-            )}
-          </View>
-        )}
-        {favorites && favorites.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Suosikit</Text>
-            {favorites.map(favId => (
-              <TouchableOpacity key={favId} style={styles.item} onPress={() => navigation.navigate('ProductDetail', { product: {id: favId} })}>
-                <Text style={styles.itemTitle}>{favId}</Text>
-                <Text style={styles.itemMeta}>Tallennettu suosikkeihin</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
+
         {loginRequired ? (
           <View style={styles.card}>
             <Text style={styles.info}>Kirjaudu sisään nähdäksesi varaukset ja arvostelut.</Text>

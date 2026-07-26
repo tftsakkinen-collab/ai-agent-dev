@@ -1,10 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { Platform } from 'react-native';
-let StripeProvider = ({children}) => <>{children}</>;
-if (Platform.OS !== 'web') {
-  StripeProvider = require('@stripe/stripe-react-native').StripeProvider;
-}
+import { StripeProvider } from '@stripe/stripe-react-native';
 import { STRIPE_PUBLISHABLE_KEY } from './src/config';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import HomeScreen from './src/screens/HomeScreen';
