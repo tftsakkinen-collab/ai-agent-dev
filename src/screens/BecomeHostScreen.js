@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
 import { createOwnerListing, getOwnerListings, updateOwnerListing } from '../lib/api';
-import { useToast } from '../contexts/ToastContext';
 
 export default function BecomeHostScreen() {
-  const { showToast } = useToast();
   const [boardName, setBoardName] = useState('');
   const [description, setDescription] = useState('');
   const [locationName, setLocationName] = useState('Oulu');
@@ -54,7 +52,7 @@ export default function BecomeHostScreen() {
 
   const submit = async () => {
     if (!boardName.trim() || !description.trim() || !locationName.trim()) {
-      showToast('Täydennä tiedot', 'Nimi, kuvaus ja sijainti ovat pakollisia.');
+      Alert.alert('Täydennä tiedot', 'Nimi, kuvaus ja sijainti ovat pakollisia.');
       return;
     }
 
@@ -64,7 +62,7 @@ export default function BecomeHostScreen() {
       .filter(Boolean);
 
     if (!photos.length) {
-      showToast('Lisää vähintään yksi kuva', 'Lisää yksi kuvalinkki per rivi.');
+      Alert.alert('Lisää vähintään yksi kuva', 'Lisää yksi kuvalinkki per rivi.');
       return;
     }
 
@@ -82,15 +80,15 @@ export default function BecomeHostScreen() {
 
       if (editingListingId) {
         await updateOwnerListing(editingListingId, payload);
-        showToast('Listing päivitetty', 'Muutokset tallennettu. Listing palautui moderointijonoon.');
+        Alert.alert('Listing päivitetty', 'Muutokset tallennettu. Listing palautui moderointijonoon.');
       } else {
         await createOwnerListing(payload);
-        showToast('Ilmoitus lähetetty moderointiin', 'SUP-lautasi julkaistaan kun admin hyväksyy listingin.');
+        Alert.alert('Ilmoitus lähetetty moderointiin', 'SUP-lautasi julkaistaan kun admin hyväksyy listingin.');
       }
       resetForm();
       loadListings();
     } catch (error) {
-      showToast('Julkaisu epäonnistui', error.message);
+      Alert.alert('Julkaisu epäonnistui', error.message);
     } finally {
       setSaving(false);
     }

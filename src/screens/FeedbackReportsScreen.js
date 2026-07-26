@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { FlatList, RefreshControl, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, RefreshControl, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
 import { fetchJson } from '../lib/api';
-import { useToast } from '../contexts/ToastContext';
 
 const statuses = ['new', 'in_progress', 'resolved'];
 const priorities = ['low', 'medium', 'high'];
@@ -17,7 +16,6 @@ function formatDate(value) {
 }
 
 export default function FeedbackReportsScreen() {
-  const { showToast } = useToast();
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -74,11 +72,11 @@ export default function FeedbackReportsScreen() {
     const text = JSON.stringify(payload, null, 2);
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
-      showToast('Yhteenveto kopioitu', 'Raporttien yhteenveto kopioitiin leikepöydälle.');
+      Alert.alert('Yhteenveto kopioitu', 'Raporttien yhteenveto kopioitiin leikepöydälle.');
       return;
     }
 
-    showToast('Yhteenveto', text.slice(0, 1800));
+    Alert.alert('Yhteenveto', text.slice(0, 1800));
   };
 
   return (

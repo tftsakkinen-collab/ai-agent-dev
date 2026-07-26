@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { reportIssue } from '../lib/api';
-import { useToast } from '../contexts/ToastContext';
 
 export default function ReportIssueButton({
   routeName,
@@ -11,7 +10,6 @@ export default function ReportIssueButton({
   initialPriority = 'medium',
   floating = true
 }) {
-  const { showToast } = useToast();
   const [visible, setVisible] = useState(false);
   const [message, setMessage] = useState(initialMessage);
   const [reporterEmail, setReporterEmail] = useState('');
@@ -33,7 +31,7 @@ export default function ReportIssueButton({
 
   const submit = async () => {
     if (!message.trim() && !errorDetails) {
-      showToast('Kuvaa ongelma', 'Kirjoita lyhyt kuvaus ongelmasta ennen lahetysta.');
+      Alert.alert('Kuvaa ongelma', 'Kirjoita lyhyt kuvaus ongelmasta ennen lahetysta.');
       return;
     }
 
@@ -48,10 +46,10 @@ export default function ReportIssueButton({
         errorDetails,
         priority
       });
-      showToast('Raportti lahetetty', 'Kiitos. Ongelma kirjattiin jatkokasittelyyn.');
+      Alert.alert('Raportti lahetetty', 'Kiitos. Ongelma kirjattiin jatkokasittelyyn.');
       reset();
     } catch (error) {
-      showToast('Lahetys epaonnistui', error.message);
+      Alert.alert('Lahetys epaonnistui', error.message);
     } finally {
       setSending(false);
     }

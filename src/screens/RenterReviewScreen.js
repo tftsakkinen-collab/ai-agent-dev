@@ -1,32 +1,30 @@
 import React, { useState } from 'react';
-import { SafeAreaView, View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList } from 'react-native';
+import { SafeAreaView, View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Alert } from 'react-native';
 import { fetchJson } from '../lib/api';
-import { useToast } from '../contexts/ToastContext';
 
 export default function RenterReviewScreen() {
-  const { showToast } = useToast();
   const [renterEmail, setRenterEmail] = useState('');
   const [reviews, setReviews] = useState([]);
   const [rating, setRating] = useState('5');
   const [comment, setComment] = useState('');
 
   const loadReviews = async () => {
-    if (!renterEmail) return showToast('Anna vuokraajan sähköposti.');
+    if (!renterEmail) return Alert.alert('Anna vuokraajan sähköposti.');
     try {
       const data = await fetchJson(`/api/reviews?targetType=renter&targetId=${encodeURIComponent(renterEmail)}`);
       setReviews(data);
     } catch (e) {
       if (e.message === 'Unauthorized') {
-        showToast('Kirjaudu sisään ensin.');
+        Alert.alert('Kirjaudu sisään ensin.');
       } else {
-        showToast('Arvostelujen lataus epäonnistui', e.message);
+        Alert.alert('Arvostelujen lataus epäonnistui', e.message);
       }
     }
   };
 
   const submitReview = async () => {
-    if (!renterEmail) return showToast('Anna vuokraajan sähköposti.');
-    if (!rating) return showToast('Anna arvosana.');
+    if (!renterEmail) return Alert.alert('Anna vuokraajan sähköposti.');
+    if (!rating) return Alert.alert('Anna arvosana.');
 
     try {
       await fetchJson('/api/reviews', {
@@ -36,13 +34,13 @@ export default function RenterReviewScreen() {
       });
       setComment('');
       setRating('5');
-      showToast('Arvostelu tallennettu');
+      Alert.alert('Arvostelu tallennettu');
       loadReviews();
     } catch (e) {
       if (e.message === 'Unauthorized') {
-        showToast('Kirjaudu sisään ensin.');
+        Alert.alert('Kirjaudu sisään ensin.');
       } else {
-        showToast('Arvostelun luonti epäonnistui', e.message);
+        Alert.alert('Arvostelun luonti epäonnistui', e.message);
       }
     }
   };

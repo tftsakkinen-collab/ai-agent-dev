@@ -1,5 +1,5 @@
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { render, waitFor, act } from '@testing-library/react-native';
 import ProductList from '../components/ProductList';
 
 jest.mock('../lib/api', () => ({

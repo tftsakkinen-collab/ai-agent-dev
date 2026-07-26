@@ -25,6 +25,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/native": "^6.1.0",
     "@react-navigation/native-stack": "^6.9.12",
+    "@stripe/stripe-react-native": "^0.71.0",
     "@upstash/redis": "^1.35.3",
     "@vercel/kv": "^3.0.0",
     "cors": "^2.8.5",
@@ -41,7 +42,8 @@
     "react-native-vector-icons": "^10.3.0",
     "react-native-web": "^0.21.0",
     "sqlite": "^5.1.1",
-    "sqlite3": "^6.0.1"
+    "sqlite3": "^6.0.1",
+    "stripe": "^22.3.2"
   },
   "devDependencies": {
     "@expo/ngrok": "^4.1.3",

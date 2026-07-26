@@ -1,4 +1,8 @@
-node_modules/
 .env
-gearspot.sqlite
-server/gearspot.sqlite
+__pycache__/
+*.pyc
+.venv/
+node_modules
+.expo/
+dist/
+logs/*.ndjson

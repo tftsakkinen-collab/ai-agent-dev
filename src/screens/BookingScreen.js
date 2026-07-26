@@ -3,20 +3,14 @@ import { SafeAreaView, View, Text, TextInput, TouchableOpacity, StyleSheet, Scro
 import ScreenHeader from '../components/ScreenHeader';
 import { fetchJson, getProfile } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
-
-const paymentMethods = [
-  { id: 'visa', label: 'Visa' },
-  { id: 'mastercard', label: 'Mastercard' },
-  { id: 'mobilepay', label: 'MobilePay' }
-];
+import { useStripe } from '@stripe/stripe-react-native';
 
 export default function BookingScreen({ route, navigation }) {
-  const { showToast } = useToast();
   const { product, selectedDate, selectedTime } = route.params || {};
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0].id);
-  const [cardLast4, setCardLast4] = useState('4242');
+  const { showToast } = useToast();
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [termsAccepted, setTermsAccepted] = useState(Boolean(route?.params?.termsAccepted));
   const [safetyAccepted, setSafetyAccepted] = useState(Boolean(route?.params?.safetyAccepted));
 
@@ -30,7 +24,6 @@ export default function BookingScreen({ route, navigation }) {
     if (!name) return showToast('Täytä nimi');
     if (!email) return showToast('Kirjaudu ensin sisään', 'Tarvitsemme vahvistetun sähköpostin varaukselle.');
     if (!product) return showToast('Tuote puuttuu');
-    if (cardLast4.trim().length < 4) return showToast('Täytä maksutavan tunniste', 'Anna vähintään 4 numeroa mock-maksua varten.');
     if (!termsAccepted || !safetyAccepted) return showToast('Hyväksynnät puuttuvat', 'Hyväksy ehdot ja turvallisuuschecklist ennen varausta.');
 
     try {
@@ -40,16 +33,44 @@ export default function BookingScreen({ route, navigation }) {
         body: JSON.stringify({
           productId: product.id,
           name,
-          paymentMethod,
-          cardLast4,
+          paymentMethod: 'stripe',
           termsAccepted,
           safetyChecklistAccepted: safetyAccepted,
           selectedDate,
           selectedTime
         })
       });
-      showToast('Mock-maksu onnistui', `Varaus vahvistettu. Maksun tila: ${booking.paymentStatus}.`);
-      navigation.navigate('Profile');
+
+      if (!booking.clientSecret) {
+         showToast('Maksu onnistui', `Varaus vahvistettu. Maksun tila: ${booking.paymentStatus}.`);
+         navigation.navigate('Profile');
+         return;
+      }
+
+      const { error: initError } = await initPaymentSheet({
+        merchantDisplayName: 'GearSpot',
+        paymentIntentClientSecret: booking.clientSecret,
+        allowsDelayedPaymentMethods: true,
+        defaultBillingDetails: {
+          name: name,
+          email: email,
+        }
+      });
+
+      if (initError) {
+        showToast('Virhe maksun alustuksessa', initError.message);
+        return;
+      }
+
+      const { error: paymentError } = await presentPaymentSheet();
+
+      if (paymentError) {
+         showToast('Maksu epäonnistui tai peruttiin', paymentError.message);
+      } else {
+         showToast('Maksu onnistui!', 'Varaus vahvistettu.');
+         navigation.navigate('Profile');
+      }
+
     } catch (error) {
       if (error.message === 'Unauthorized') {
         return showToast('Kirjaudu ensin sisään', 'Varausten tekeminen vaatii kirjautumisen.');
@@ -70,38 +91,17 @@ export default function BookingScreen({ route, navigation }) {
               Aika: {selectedDate} klo {selectedTime}
             </Text>
           ) : null}
-          <Text style={styles.info}>Tama on mock-kassa. Rahaa ei veloiteta, mutta kayttokokemus etenee kuten oikeassa maksussa.</Text>
+          <Text style={styles.info}>Turvallinen maksaminen Stripe-palvelun kautta.</Text>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>Varaus etenee nyt 3 vaiheessa</Text>
             <Text style={styles.summaryItem}>1. Tayta yhteystiedot</Text>
-            <Text style={styles.summaryItem}>2. Vahvista mock-maksu</Text>
+            <Text style={styles.summaryItem}>2. Syötä maksutiedot Stripen turvallisessa ikkunassa</Text>
             <Text style={styles.summaryItem}>3. Tarkista vahvistus Profiilista ja testaa palautus</Text>
           </View>
           <Text style={styles.label}>Nimi</Text>
           <TextInput placeholder="Nimi" value={name} onChangeText={setName} style={styles.input} autoCapitalize="words" />
           <Text style={styles.label}>Sähköposti</Text>
           <TextInput placeholder="Kirjaudu nähdäksesi sähköpostin" value={email} style={styles.input} editable={false} />
-          <Text style={styles.label}>Maksutapa</Text>
-          <View style={styles.paymentMethodRow}>
-            {paymentMethods.map((method) => (
-              <TouchableOpacity
-                key={method.id}
-                style={[styles.paymentMethodButton, paymentMethod === method.id && styles.paymentMethodButtonActive]}
-                onPress={() => setPaymentMethod(method.id)}
-              >
-                <Text style={[styles.paymentMethodText, paymentMethod === method.id && styles.paymentMethodTextActive]}>{method.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <Text style={styles.label}>Kortin tai lompakon 4 viimeista merkkiä</Text>
-          <TextInput
-            placeholder="4242"
-            value={cardLast4}
-            onChangeText={setCardLast4}
-            style={styles.input}
-            keyboardType="number-pad"
-            maxLength={4}
-          />
 
           <View style={styles.consentCard}>
             <Text style={styles.summaryTitle}>Turvallisuus ja ehdot</Text>
@@ -153,12 +153,6 @@ const styles = StyleSheet.create({
   checkLabel: { flex: 1, color: '#385160', lineHeight: 20 },
   label: { color: '#556b7a', marginBottom: 6, marginTop: 12 },
   input: { borderWidth: 1, borderColor: '#d5dde3', borderRadius: 12, padding: 12, backgroundColor: '#f7fbfc' },
-  paymentMethodRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 },
-  paymentMethodButton: { borderWidth: 1, borderColor: '#d5dde3', borderRadius: 999, paddingVertical: 10, paddingHorizontal: 14, marginRight: 8, marginBottom: 8, backgroundColor: '#fff' },
-  paymentMethodButtonActive: { borderColor: '#15948b', backgroundColor: '#e9f8f6' },
-  paymentMethodText: { color: '#385160', fontWeight: '600' },
-  paymentMethodTextActive: { color: '#15948b' },
-  warningText: { color: '#c0392b', marginTop: 8, textAlign: 'center' },
   submitButton: { marginTop: 20, backgroundColor: '#15948b', paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
   submitText: { color: '#fff', fontWeight: '700' }
 });

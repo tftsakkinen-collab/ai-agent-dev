@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { SafeAreaView, View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ScrollView } from 'react-native';
+import { SafeAreaView, View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
 import { fetchJson } from '../lib/api';
-import { useToast } from '../contexts/ToastContext';
 
 export default function ReviewScreen({ navigation, route }) {
-  const { showToast } = useToast();
   const { targetType, targetId, targetName } = route.params || {};
   const [reviews, setReviews] = useState([]);
   const [rating, setRating] = useState('5');
@@ -28,7 +26,7 @@ export default function ReviewScreen({ navigation, route }) {
   };
 
   const submitReview = async () => {
-    if (!rating) return showToast('Valitse arvosana');
+    if (!rating) return Alert.alert('Valitse arvosana');
 
     try {
       const result = await fetchJson('/api/reviews', {
@@ -39,12 +37,12 @@ export default function ReviewScreen({ navigation, route }) {
       setComment('');
       setRating('5');
       fetchReviews();
-      showToast('Arvostelu lähetetty', `Kiitos arvostelusta ${result.reviewer}!`);
+      Alert.alert('Arvostelu lähetetty', `Kiitos arvostelusta ${result.reviewer}!`);
     } catch (error) {
       if (error.message === 'Unauthorized') {
         setUnauthorized(true);
       } else {
-        showToast('Arvostelu epäonnistui', error.message);
+        Alert.alert('Arvostelu epäonnistui', error.message);
       }
     }
   };

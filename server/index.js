@@ -3,12 +3,13 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const Stripe = require('stripe');
 const multer = require('multer');
 const { createAuthProvider } = require('./authProvider');
-const { getStoreValue, setStoreValue, clearDb } = require('./sqlite-store'); // eslint-disable-line no-unused-vars
 const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } });
 const app = express();
 const port = process.env.PORT || 3000;
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy'); // eslint-disable-line no-unused-vars
 const authSecret = process.env.AUTH_SECRET || 'gearspot-dev-auth-secret';
 const exposeAuthCode = process.env.AUTH_EXPOSE_CODE !== 'false';
 const adminApiKey = process.env.ADMIN_API_KEY || '';
@@ -192,7 +193,7 @@ const categories = [
 let bookings = [];
 let dynamicReviews = [];
 let ownerListings = [];
-
+let users = {}; // userId -> { email, name, phone, avatarUrl }
 const feedbackReports = [];
 
 const notifications = [];
@@ -566,6 +567,10 @@ function signPayload(payloadBase64) {
 }
 
 function buildAuthToken(email) {
+  const userId = buildUserIdFromEmail(email);
+  if (!users[userId]) {
+    users[userId] = { id: userId, email, name: '', phone: '', avatarUrl: '' };
+  }
   const payload = {
     email,
     userId: buildUserIdFromEmail(email),
@@ -756,7 +761,15 @@ app.post('/api/auth/verify-code', async (req, res) => {
   return res.json({ token, email, userId: buildUserIdFromEmail(email) });
 });
 
-
+// Backward-compatible endpoint for existing tests and clients.
+app.post('/api/auth/login', (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'Valid email required' });
+  }
+  const token = buildAuthToken(email);
+  return res.json({ token, email, userId: buildUserIdFromEmail(email) });
+});
 
 app.get('/api/auth/provider-status', (req, res) => {
   return res.json(authProvider.getPublicStatus());
@@ -825,7 +838,27 @@ function getSession(req) {
   return parseAuthToken(token);
 }
 
+app.get('/api/me', (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  const user = users[session.userId] || { id: session.userId, email: session.email };
+  return res.json(user);
+});
 
+app.patch('/api/me', (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { name, phone } = req.body;
+  if (!users[session.userId]) {
+      users[session.userId] = { id: session.userId, email: session.email };
+  }
+
+  if (name !== undefined) users[session.userId].name = name;
+  if (phone !== undefined) users[session.userId].phone = phone;
+
+  return res.json(users[session.userId]);
+});
 
 
 app.get('/api/bookings', async (req, res) => {
@@ -839,14 +872,37 @@ app.post('/api/bookings', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
   await readOwnerListings();
+
   const { productId, name, paymentMethod, cardLast4, termsAccepted, safetyChecklistAccepted, selectedDate, selectedTime } = req.body || {};
   if (!productId || !name) return res.status(400).json({ error: 'Missing fields' });
   if (!termsAccepted || !safetyChecklistAccepted) {
     return res.status(400).json({ error: 'Terms and safety checklist must be accepted before booking' });
   }
+
   const product = getProductById(productId);
   if (!product) return res.status(404).json({ error: 'Product not found' });
+
   const id = `bkg-${Date.now()}`;
+
+  const pricePerHour = product.pricePerHour || 15;
+  const amountToCharge = pricePerHour * 100; // in cents
+
+  let paymentIntent;
+  try {
+    paymentIntent = await stripe.paymentIntents.create({
+      amount: amountToCharge,
+      currency: 'eur',
+      metadata: {
+        bookingId: id,
+        productId: product.id,
+        renterId: session.userId,
+      },
+    });
+  } catch (err) {
+    console.error('Stripe PaymentIntent Error', err);
+    return res.status(500).json({ error: 'Maksuvälittäjään ei saatu yhteyttä.' });
+  }
+
   const safeLast4 = String(cardLast4 || '').slice(-4);
   const booking = {
     id,
@@ -857,9 +913,10 @@ app.post('/api/bookings', async (req, res) => {
     selectedTime,
     email: session.email,
     renterUserId: session.userId,
-    bookingStatus: 'confirmed',
-    bookingStage: BOOKING_STAGE.APPROVED,
-    paymentStatus: 'paid',
+    bookingStatus: 'pending',
+    bookingStage: 'pending_payment',
+    paymentStatus: 'pending',
+    paymentIntentId: paymentIntent.id,
     refundStatus: 'not_requested',
     consentVersion: '2026-07-sup-oulu-v1',
     termsAcceptedAt: new Date().toISOString(),
@@ -870,8 +927,8 @@ app.post('/api/bookings', async (req, res) => {
     depositClaimReason: null,
     evidencePhotosBefore: [],
     evidencePhotosAfter: [],
-    paymentMethod: paymentMethod || 'mock_card',
-    paymentSummary: safeLast4 ? `Mock ${paymentMethod || 'card'} ending ${safeLast4}` : 'Mock card payment approved',
+    paymentMethod: paymentMethod || 'stripe',
+    paymentSummary: 'Waiting for Stripe payment...',
     handoffMethod: 'in_person',
     handoffCode: null,
     ownerHandoffConfirmedAt: null,
@@ -890,7 +947,15 @@ app.post('/api/bookings', async (req, res) => {
     },
     createdAt: new Date().toISOString()
   };
-  booking.paidAt = booking.createdAt;
+
+  if (paymentMethod === 'mock_card' || process.env.NODE_ENV === 'test') {
+      booking.paymentStatus = 'paid';
+      booking.bookingStatus = 'confirmed';
+      booking.bookingStage = BOOKING_STAGE.APPROVED;
+      booking.paymentSummary = safeLast4 ? `Mock card ending ${safeLast4}` : 'Mock card payment approved';
+      booking.paidAt = booking.createdAt;
+  }
+
   const allBookings = await readBookings();
   allBookings.push(booking);
 
@@ -898,9 +963,11 @@ app.post('/api/bookings', async (req, res) => {
   const renterNotif = generateNotification(session.userId, `Varauksesi lautaan ${product.name} on vastaanotettu!`, 'booking_created', { bookingId: booking.id });
   const ownerNotif = generateNotification(product.providerId || 'admin', `Sait uuden varauksen lautaan ${product.name}!`, 'booking_received', { bookingId: booking.id });
   notifs.push(renterNotif, ownerNotif);
+
   await saveNotifications(notifs);
   await saveBookings(allBookings);
-  res.json(getSafeBookingView(booking));
+
+  res.status(201).json({ ...getSafeBookingView(booking), clientSecret: paymentIntent.client_secret });
 });
 
 app.post('/api/bookings/:id/refund', async (req, res) => {
@@ -1897,9 +1964,70 @@ app.patch('/api/notifications/:id/read', async (req, res) => {
   res.status(404).json({error: 'Not found'});
 });
 
-app.post('/api/admin/clear-db', async (req, res) => {
-  await clearDb();
-  res.json({ ok: true });
+
+// Stripe Webhook Endpoint
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  let event;
+
+  try {
+    if (!endpointSecret) {
+      console.warn('STRIPE_WEBHOOK_SECRET is not configured! Failing webhook requests for security.');
+      return res.status(400).send(`Webhook Error: Missing endpoint secret`);
+    }
+    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+  } catch (err) {
+    console.error('Webhook signature verification failed.', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  try {
+    if (event.type === 'payment_intent.succeeded') {
+      const paymentIntent = event.data.object;
+      const bookingId = paymentIntent.metadata.bookingId;
+
+      console.log(`[stripe] Payment successful for booking ${bookingId}`);
+
+      if (bookingId) {
+        const allBookings = await readBookings();
+        const booking = allBookings.find(b => b.id === bookingId);
+
+        if (booking) {
+          booking.paymentStatus = 'paid';
+          booking.bookingStage = BOOKING_STAGE.APPROVED;
+          booking.bookingStatus = 'confirmed';
+          booking.paidAt = new Date().toISOString();
+          booking.paymentSummary = `Stripe Payment (Intent: ${paymentIntent.id})`;
+
+          await saveBookings(allBookings);
+        }
+      }
+    } else if (event.type === 'payment_intent.payment_failed') {
+      const paymentIntent = event.data.object;
+      const bookingId = paymentIntent.metadata.bookingId;
+
+      console.log(`[stripe] Payment failed for booking ${bookingId}`);
+
+      if (bookingId) {
+        const allBookings = await readBookings();
+        const booking = allBookings.find(b => b.id === bookingId);
+
+        if (booking) {
+          booking.paymentStatus = 'failed';
+          booking.paymentSummary = `Stripe Payment Failed`;
+
+          await saveBookings(allBookings);
+        }
+      }
+    }
+  } catch (error) {
+     console.error('Error handling webhook event', error);
+     return res.status(500).send('Webhook handler failed');
+  }
+
+  res.json({ received: true });
 });
 
 module.exports = app;

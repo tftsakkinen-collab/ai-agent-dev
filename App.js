@@ -1,5 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
+import { StripeProvider } from '@stripe/stripe-react-native';
+import { STRIPE_PUBLISHABLE_KEY } from './src/config';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import HomeScreen from './src/screens/HomeScreen';
 import ProductDetail from './src/screens/ProductDetail';
@@ -11,7 +13,6 @@ import ProviderDetail from './src/screens/ProviderDetail';
 import ReviewScreen from './src/screens/ReviewScreen';
 import RenterReviewScreen from './src/screens/RenterReviewScreen';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
-import { ToastProvider } from './src/contexts/ToastContext';
 import ReportIssueButton from './src/components/ReportIssueButton';
 import FeedbackReportsScreen from './src/screens/FeedbackReportsScreen';
 import AdminOpsScreen from './src/screens/AdminOpsScreen';
@@ -29,7 +30,7 @@ export default function App() {
 
   return (
     <AppErrorBoundary routeName={routeName}>
-      <ToastProvider>
+      <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
       <NavigationContainer
         ref={navigationRef}
         onReady={() => setRouteName(navigationRef.current?.getCurrentRoute()?.name || 'Home')}
@@ -55,7 +56,7 @@ export default function App() {
         </Stack.Navigator>
         <ReportIssueButton routeName={routeName} />
       </NavigationContainer>
-      </ToastProvider>
+      </StripeProvider>
     </AppErrorBoundary>
   );
 }
