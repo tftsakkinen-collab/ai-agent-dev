@@ -54,6 +54,7 @@ async function sendEmail(to, subject, text, html) { // eslint-disable-line no-un
   }
 }
 
+const { validateRequest, bookingSchema, profileSchema } = require('./src/utils/validation');
 const multer = require('multer');
 const { createAuthProvider } = require('./authProvider');
 const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } });
@@ -983,16 +984,12 @@ app.get('/api/bookings', async (req, res) => {
   res.json(allBookings.filter((booking) => booking.email === session.email).map(getSafeBookingView));
 });
 
-app.post('/api/bookings', async (req, res) => {
+app.post('/api/bookings', validateRequest(bookingSchema), async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
   await readOwnerListings();
 
-  const { productId, name, paymentMethod, cardLast4, termsAccepted, safetyChecklistAccepted, selectedDate, selectedTime } = req.body || {};
-  if (!productId || !name) return res.status(400).json({ error: 'Missing fields' });
-  if (!termsAccepted || !safetyChecklistAccepted) {
-    return res.status(400).json({ error: 'Terms and safety checklist must be accepted before booking' });
-  }
+  const { productId, name, paymentMethod, cardLast4, selectedDate, selectedTime } = req.validatedData;
 
   const product = getProductById(productId);
   if (!product) return res.status(404).json({ error: 'Product not found' });
@@ -2204,11 +2201,11 @@ app.post('/api/bookings/:id/messages', async (req, res) => {
 });
 
 // --- User Profile fallback from users to sqlite ---
-app.patch('/api/me', async (req, res) => {
+app.patch('/api/me', validateRequest(profileSchema), async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
 
-  const { name, phone } = req.body;
+  const { name, phone } = req.validatedData;
 
   let usersObj = await getStoreValue('gearspot:users');
   if (!usersObj) usersObj = {};

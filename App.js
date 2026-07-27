@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React, { useRef, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { StripeProvider } from '@stripe/stripe-react-native';
@@ -24,12 +25,15 @@ import PrivacyPolicyScreen from './src/screens/PrivacyPolicyScreen';
 
 const Stack = createNativeStackNavigator();
 
+const queryClient = new QueryClient();
+
 export default function App() {
   const navigationRef = useRef(null);
   const [routeName, setRouteName] = useState('Home');
 
   return (
     <AppErrorBoundary routeName={routeName}>
+      <QueryClientProvider client={queryClient}>
       <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
       <NavigationContainer
         ref={navigationRef}
@@ -57,6 +61,7 @@ export default function App() {
         <ReportIssueButton routeName={routeName} />
       </NavigationContainer>
       </StripeProvider>
+      </QueryClientProvider>
     </AppErrorBoundary>
   );
 }

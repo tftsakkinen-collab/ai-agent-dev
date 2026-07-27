@@ -303,3 +303,24 @@ export async function verifyMagicLink(token, email = null) {
   }
   return json;
 }
+
+
+import { useQuery } from '@tanstack/react-query';
+
+export function useProducts() {
+  return useQuery({
+    queryKey: ['products'],
+    queryFn: async () => {
+      const res = await fetchJson('/api/products');
+      return res;
+    }
+  });
+}
+
+export function useProfileQuery() {
+  return useQuery({
+    queryKey: ['profile'],
+    queryFn: getProfile,
+    retry: false
+  });
+}

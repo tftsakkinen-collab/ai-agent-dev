@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useProducts, fetchJson } from '../lib/api';
 import { SafeAreaView, Text, StyleSheet, View, TouchableOpacity, TextInput, ScrollView } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
 import ProductList from '../components/ProductList';
-import { fetchJson } from '../lib/api';
+
 
 const quickSearchItems = [
   { label: 'SUP-laudat Oulussa', query: 'oulu sup' },
@@ -21,11 +22,15 @@ const categoryCards = [
 ];
 
 export default function HomeScreen({ navigation }) {
-  const [products, setProducts] = useState([]);
+  const { data: products = [] } = useProducts();
   const [categories, setCategories] = useState([]);
   const [searchText, setSearchText] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('Kaikki');
   const [sortOrder, setSortOrder] = useState('Suosituimmat');
+
+  useEffect(() => {
+    fetchJson('/api/categories').then(setCategories).catch(() => setCategories(categoryCards));
+  }, []);
 
   const locations = ['Kaikki', 'Nallikari', 'Hietasaari', 'Kuivasjärvi'];
   const sortOptions = ['Suosituimmat', 'Halvin ensin', 'Kallein ensin'];
@@ -51,15 +56,7 @@ export default function HomeScreen({ navigation }) {
     });
   }
 
-  useEffect(() => {
-    fetchJson('/api/products')
-      .then((data) => setProducts(data))
-      .catch(() => setProducts([]));
 
-    fetchJson('/api/categories')
-      .then((data) => setCategories(data))
-      .catch(() => setCategories(categoryCards));
-  }, []);
 
   const goToSearch = () => {
     navigation.navigate('MapSearch', { initialQuery: searchText.trim() });

@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useProfileQuery, fetchJson } from '../lib/api';
 import { SafeAreaView, View, Text, FlatList, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput, Image } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
 import {
