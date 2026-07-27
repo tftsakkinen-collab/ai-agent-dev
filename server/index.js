@@ -3,6 +3,30 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { getStoreValue, setStoreValue } = require('./sqlite-store');
+
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const s3Client = process.env.AWS_REGION && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY ? new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  }
+}) : null;
+
+async function uploadToS3(filename, buffer, mimetype) {
+  if (!s3Client || !process.env.AWS_BUCKET_NAME) return null;
+  const command = new PutObjectCommand({
+    Bucket: process.env.AWS_BUCKET_NAME,
+    Key: filename,
+    Body: buffer,
+    ContentType: mimetype,
+    ACL: 'public-read'
+  });
+  await s3Client.send(command);
+  return `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${filename}`;
+}
+
 const Stripe = require('stripe');
 const multer = require('multer');
 const { createAuthProvider } = require('./authProvider');
@@ -63,6 +87,70 @@ const corsOptions = {
   optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  let event;
+
+  try {
+    if (!endpointSecret) {
+      console.warn('STRIPE_WEBHOOK_SECRET is not configured! Failing webhook requests for security.');
+      return res.status(400).send(`Webhook Error: Missing endpoint secret`);
+    }
+    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+  } catch (err) {
+    console.error(`[stripe-webhook-error] Signature verification failed:`, err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  try {
+    if (event.type === 'payment_intent.succeeded') {
+      const paymentIntent = event.data.object;
+      const bookingId = paymentIntent.metadata.bookingId;
+
+      console.log(`[stripe] Payment successful for booking ${bookingId}`);
+
+      if (bookingId) {
+        const allBookings = await readBookings();
+        const booking = allBookings.find(b => b.id === bookingId);
+
+        if (booking) {
+          booking.paymentStatus = 'paid';
+          booking.bookingStage = BOOKING_STAGE.APPROVED;
+          booking.bookingStatus = 'confirmed';
+          booking.paidAt = new Date().toISOString();
+          booking.paymentSummary = `Stripe Payment (Intent: ${paymentIntent.id})`;
+
+          await saveBookings(allBookings);
+        }
+      }
+    } else if (event.type === 'payment_intent.payment_failed') {
+      const paymentIntent = event.data.object;
+      const bookingId = paymentIntent.metadata.bookingId;
+
+      console.log(`[stripe] Payment failed for booking ${bookingId}`);
+
+      if (bookingId) {
+        const allBookings = await readBookings();
+        const booking = allBookings.find(b => b.id === bookingId);
+
+        if (booking) {
+          booking.paymentStatus = 'failed';
+          booking.paymentSummary = `Stripe Payment Failed`;
+
+          await saveBookings(allBookings);
+        }
+      }
+    }
+  } catch (error) {
+     console.error(`[stripe-webhook-error] Error handling event ${event?.type}:`, error.message);
+     return res.status(500).send('Webhook handler failed');
+  }
+
+  res.json({ received: true });
+});
+
 app.use(express.json());
 app.use((req, res, next) => {
   const incomingRequestId = String(req.headers['x-request-id'] || '').trim();
@@ -845,20 +933,6 @@ app.get('/api/me', (req, res) => {
   return res.json(user);
 });
 
-app.patch('/api/me', (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const { name, phone } = req.body;
-  if (!users[session.userId]) {
-      users[session.userId] = { id: session.userId, email: session.email };
-  }
-
-  if (name !== undefined) users[session.userId].name = name;
-  if (phone !== undefined) users[session.userId].phone = phone;
-
-  return res.json(users[session.userId]);
-});
 
 
 app.get('/api/bookings', async (req, res) => {
@@ -1804,7 +1878,19 @@ app.post('/api/owner/listings/:id/upload-photo', upload.single('photo'), async (
     return res.status(404).json({ error: 'Listing not found' });
   }
 
-  const photoUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+  const filename = `product-${req.params.id}-${Date.now()}.${req.file.mimetype.split('/')[1] || 'jpg'}`;
+  let photoUrl = await uploadToS3(filename, req.file.buffer, req.file.mimetype);
+
+  if (!photoUrl) {
+    const fs = require('fs');
+    const uploadDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadDir)) { fs.mkdirSync(uploadDir, { recursive: true }); }
+    const filepath = path.join(__dirname, 'uploads', filename);
+    fs.writeFileSync(filepath, req.file.buffer);
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.headers.host;
+    photoUrl = `${protocol}://${host}/uploads/${filename}`;
+  }
 
   if (!Array.isArray(listing.photos)) {
     listing.photos = [];
@@ -1979,68 +2065,114 @@ app.patch('/api/notifications/:id/read', async (req, res) => {
 
 
 // Stripe Webhook Endpoint
-app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-  let event;
 
-  try {
-    if (!endpointSecret) {
-      console.warn('STRIPE_WEBHOOK_SECRET is not configured! Failing webhook requests for security.');
-      return res.status(400).send(`Webhook Error: Missing endpoint secret`);
-    }
-    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-  } catch (err) {
-    console.error(`[stripe-webhook-error] Signature verification failed:`, err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+// --- Favorites ---
+app.get('/api/favorites', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  let usersObj = await getStoreValue('gearspot:users');
+  if (!usersObj) usersObj = {};
+  if (!usersObj[session.userId]) usersObj[session.userId] = { favorites: [] };
+  res.json(usersObj[session.userId].favorites || []);
+});
+
+app.post('/api/favorites', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  const { productId } = req.body;
+  if (!productId) return res.status(400).json({ error: 'Missing productId' });
+
+  let usersObj = await getStoreValue('gearspot:users');
+  if (!usersObj) usersObj = {};
+
+  if (!usersObj[session.userId]) usersObj[session.userId] = { favorites: [] };
+  if (!usersObj[session.userId].favorites) usersObj[session.userId].favorites = [];
+
+  if (!usersObj[session.userId].favorites.includes(productId)) {
+    usersObj[session.userId].favorites.push(productId);
+    await setStoreValue('gearspot:users', usersObj);
+  }
+  res.json(usersObj[session.userId].favorites);
+});
+
+app.delete('/api/favorites/:id', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  let usersObj = await getStoreValue('gearspot:users');
+  if (!usersObj) usersObj = {};
+
+  if (!usersObj[session.userId] || !usersObj[session.userId].favorites) {
+    return res.json([]);
   }
 
-  try {
-    if (event.type === 'payment_intent.succeeded') {
-      const paymentIntent = event.data.object;
-      const bookingId = paymentIntent.metadata.bookingId;
+  usersObj[session.userId].favorites = usersObj[session.userId].favorites.filter(id => id !== req.params.id);
+  await setStoreValue('gearspot:users', usersObj);
+  res.json(usersObj[session.userId].favorites);
+});
 
-      console.log(`[stripe] Payment successful for booking ${bookingId}`);
+// --- Chat ---
+app.get('/api/bookings/:id/messages', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  const allBookings = await readBookings();
+  const booking = allBookings.find(b => b.id === req.params.id);
+  if (!booking) return res.status(404).json({ error: 'Booking not found' });
 
-      if (bookingId) {
-        const allBookings = await readBookings();
-        const booking = allBookings.find(b => b.id === bookingId);
-
-        if (booking) {
-          booking.paymentStatus = 'paid';
-          booking.bookingStage = BOOKING_STAGE.APPROVED;
-          booking.bookingStatus = 'confirmed';
-          booking.paidAt = new Date().toISOString();
-          booking.paymentSummary = `Stripe Payment (Intent: ${paymentIntent.id})`;
-
-          await saveBookings(allBookings);
-        }
+  if (booking.renterUserId !== session.userId && session.email !== 'admin@gearspot.fi') {
+      if (booking.product.providerId !== session.userId && !booking.product.providerId.includes(session.email)) {
+         return res.status(403).json({ error: 'Forbidden' });
       }
-    } else if (event.type === 'payment_intent.payment_failed') {
-      const paymentIntent = event.data.object;
-      const bookingId = paymentIntent.metadata.bookingId;
-
-      console.log(`[stripe] Payment failed for booking ${bookingId}`);
-
-      if (bookingId) {
-        const allBookings = await readBookings();
-        const booking = allBookings.find(b => b.id === bookingId);
-
-        if (booking) {
-          booking.paymentStatus = 'failed';
-          booking.paymentSummary = `Stripe Payment Failed`;
-
-          await saveBookings(allBookings);
-        }
-      }
-    }
-  } catch (error) {
-     console.error(`[stripe-webhook-error] Error handling event ${event?.type}:`, error.message);
-     return res.status(500).send('Webhook handler failed');
   }
 
-  res.json({ received: true });
+  res.json(booking.messages || []);
+});
+
+app.post('/api/bookings/:id/messages', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  const allBookings = await readBookings();
+  const booking = allBookings.find(b => b.id === req.params.id);
+  if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+  if (!booking.messages) booking.messages = [];
+
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: 'Message text is required' });
+
+  const newMessage = {
+      id: `msg-${Date.now()}`,
+      senderId: session.userId,
+      senderName: session.email.split('@')[0],
+      text,
+      createdAt: new Date().toISOString()
+  };
+
+  booking.messages.push(newMessage);
+  await saveBookings(allBookings);
+
+  res.status(201).json(newMessage);
+});
+
+// --- User Profile fallback from users to sqlite ---
+app.patch('/api/me', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { name, phone } = req.body;
+
+  let usersObj = await getStoreValue('gearspot:users');
+  if (!usersObj) usersObj = {};
+  if (!usersObj[session.userId]) {
+      usersObj[session.userId] = { id: session.userId, email: session.email };
+  }
+
+  if (name !== undefined) usersObj[session.userId].name = name;
+  if (phone !== undefined) usersObj[session.userId].phone = phone;
+
+  await setStoreValue('gearspot:users', usersObj);
+  return res.json(usersObj[session.userId]);
 });
 
 module.exports = app;

@@ -1,37 +1,29 @@
 import React from 'react';
-import { SafeAreaView, ScrollView, Text, StyleSheet, View } from 'react-native';
+import { SafeAreaView, ScrollView, Text, StyleSheet } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
 
 export default function TermsOfServiceScreen() {
   return (
     <SafeAreaView style={styles.safe}>
+      <ScreenHeader title="Käyttöehdot" />
       <ScrollView contentContainerStyle={styles.container}>
-        <ScreenHeader title="Käyttöehdot" subtitle="Gearspot palvelun käyttöehdot" />
-        <View style={styles.card}>
-          <Text style={styles.heading}>1. Palvelun tarkoitus</Text>
-          <Text style={styles.paragraph}>
-            Gearspot on vertaisvuokrausalusta, joka yhdistää tavaroiden (esim. SUP-lautojen) omistajat ja vuokraajat.
-            Palveluntarjoaja (Gearspot) ei omista vuokrattavia tavaroita, vaan toimii ainoastaan välittäjänä.
-          </Text>
+        <Text style={styles.h1}>GearSpot – SUP-lautojen vuokrauksen käyttöehdot</Text>
+        <Text style={styles.text}>Viimeksi päivitetty: 26. heinäkuuta 2026</Text>
 
-          <Text style={styles.heading}>2. Käyttäjän vastuut</Text>
-          <Text style={styles.paragraph}>
-            Vuokraaja sitoutuu käyttämään vuokrattua välinettä huolellisesti ja palauttamaan sen sovitussa kunnossa
-            ja sovitussa ajassa. Omistaja vastaa siitä, että vuokrattava väline on turvallinen ja vastaa kuvausta.
-          </Text>
+        <Text style={styles.h2}>1. Palvelun kuvaus</Text>
+        <Text style={styles.text}>GearSpot on alusta, joka yhdistää SUP-lautojen omistajat (Vuokraajat) ja vuokraajat (Käyttäjät). GearSpot ei omista vuokrattavia lautoja, vaan toimii ainoastaan välittäjänä ja maksujen käsittelijänä.</Text>
 
-          <Text style={styles.heading}>3. Maksut ja pantit</Text>
-          <Text style={styles.paragraph}>
-            Vuokrauksesta voidaan periä ennalta määritetty pantti, joka palautetaan vuokrauksen päätyttyä,
-            mikäli väline palautetaan vahingoittumattomana.
-          </Text>
+        <Text style={styles.h2}>2. Käyttäjän velvollisuudet</Text>
+        <Text style={styles.text}>- Käyttäjän tulee noudattaa paikallisia vesiliikennesääntöjä.{'\n'}- Käyttäjä on velvollinen pitämään yllään pelastusliivejä koko vuokrauksen ajan.{'\n'}- Käyttäjä vastaa laudan katoamisesta tai tahallisesta vahingoittamisesta koko vuokra-ajan ja vakuusmaksun puitteissa.</Text>
 
-          <Text style={styles.heading}>4. Vahingonkorvaukset</Text>
-          <Text style={styles.paragraph}>
-            Tahallinen vahinko tai huolimattomuudesta johtuva rikkoutuminen voi johtaa korvausvastuuseen.
-            Mahdolliset kiistatilanteet ratkaistaan alustan dispute-prosessin kautta.
-          </Text>
-        </View>
+        <Text style={styles.h2}>3. Vuokraajan (Omistajan) velvollisuudet</Text>
+        <Text style={styles.text}>- Omistajan tulee varmistaa, että vuokrattava kalusto on turvallista ja käyttökuntoista.{'\n'}- Omistaja sitoutuu antamaan asianmukaiset turvallisuusohjeet luovutuksen yhteydessä.</Text>
+
+        <Text style={styles.h2}>4. Maksut, varaukset ja peruutukset</Text>
+        <Text style={styles.text}>- Maksut käsitellään Stripe-palvelun kautta.{'\n'}- Peruutuksista, jotka tehdään alle 24 tuntia ennen varausta, veloitetaan 50 % varauksen arvosta.{'\n'}- GearSpot pidättää oikeuden periä pantin, mikäli palautuksessa havaitaan vaurioita, jotka eivät olleet olemassa luovutuksen hetkellä.</Text>
+
+        <Text style={styles.h2}>5. Vastuuvapaus</Text>
+        <Text style={styles.text}>Vesiurheiluun liittyy riskejä. GearSpot ei ole vastuussa mistään henkilö- tai omaisuusvahingoista, jotka tapahtuvat vuokra-aikana. Käyttäjä ymmärtää vesillä liikkumisen riskit ja toimii omalla vastuullaan.</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -40,7 +32,7 @@ export default function TermsOfServiceScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f4f8fb' },
   container: { padding: 16, paddingBottom: 40 },
-  card: { backgroundColor: '#fff', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#e3eaef' },
-  heading: { fontSize: 18, fontWeight: 'bold', color: '#0f2f3d', marginTop: 15, marginBottom: 8 },
-  paragraph: { color: '#4d6371', lineHeight: 22, marginBottom: 10 }
+  h1: { fontSize: 22, fontWeight: '800', color: '#0f2f3d', marginBottom: 8 },
+  h2: { fontSize: 18, fontWeight: '700', color: '#15948b', marginTop: 24, marginBottom: 8 },
+  text: { fontSize: 15, color: '#4a5568', lineHeight: 22 }
 });
