@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SafeAreaView, View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { SafeAreaView, View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
 import { fetchJson, getProfile } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
@@ -13,6 +13,7 @@ export default function BookingScreen({ route, navigation }) {
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [termsAccepted, setTermsAccepted] = useState(Boolean(route?.params?.termsAccepted));
   const [safetyAccepted, setSafetyAccepted] = useState(Boolean(route?.params?.safetyAccepted));
+  const [loading, setLoading] = useState(false);
 
   React.useEffect(() => {
     getProfile()
@@ -27,6 +28,7 @@ export default function BookingScreen({ route, navigation }) {
     if (!termsAccepted || !safetyAccepted) return showToast('Hyväksynnät puuttuvat', 'Hyväksy ehdot ja turvallisuuschecklist ennen varausta.');
 
     try {
+      setLoading(true);
       const booking = await fetchJson('/api/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -76,6 +78,8 @@ export default function BookingScreen({ route, navigation }) {
         return showToast('Kirjaudu ensin sisään', 'Varausten tekeminen vaatii kirjautumisen.');
       }
       showToast('Varauksen luonti epäonnistui', error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -115,8 +119,8 @@ export default function BookingScreen({ route, navigation }) {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.submitButton} onPress={submit}>
-            <Text style={styles.submitText}>Maksa ja vahvista varaus</Text>
+          <TouchableOpacity style={[styles.submitButton, loading && {opacity: 0.7}]} onPress={submit} disabled={loading}>
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Maksa ja vahvista varaus</Text>}
           </TouchableOpacity>
         </View>
       </ScrollView>

@@ -28,6 +28,32 @@ async function uploadToS3(filename, buffer, mimetype) {
 }
 
 const Stripe = require('stripe');
+const sgMail = require('@sendgrid/mail');
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+}
+
+async function sendEmail(to, subject, text, html) { // eslint-disable-line no-unused-vars
+  if (!process.env.SENDGRID_API_KEY) {
+    console.log(`[Email Mock] To: ${to} | Subject: ${subject}`);
+    console.log(text);
+    return;
+  }
+
+  try {
+    await sgMail.send({
+      to,
+      from: process.env.SENDGRID_FROM_EMAIL || 'noreply@gearspot.fi',
+      subject,
+      text,
+      html: html || text.replace(/\n/g, '<br>')
+    });
+    console.log(`[email] Sent successfully to ${to}`);
+  } catch (error) {
+    console.error('[email-error] Failed to send email via SendGrid', error);
+  }
+}
+
 const multer = require('multer');
 const { createAuthProvider } = require('./authProvider');
 const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } });
@@ -123,6 +149,14 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
           booking.paymentSummary = `Stripe Payment (Intent: ${paymentIntent.id})`;
 
           await saveBookings(allBookings);
+
+          // Lähetetään sähköpostikuitti käyttäjälle onnistuneesta maksusta
+          await sendEmail(
+            booking.email,
+            `Varausvahvistus: ${booking.product.name}`,
+            `Hei ${booking.name},\n\nVarauksesi lautaan ${booking.product.name} on vahvistettu ja maksettu!\n\nAika: ${booking.selectedDate} klo ${booking.selectedTime}\n\nVoit tarkastella varausta sovelluksen Profiili-sivulla.\n\nYstävällisin terveisin,\nGearSpot-tiimi`,
+            `<h3>Hei ${booking.name}!</h3><p>Varauksesi lautaan <strong>${booking.product.name}</strong> on vahvistettu ja maksettu!</p><p><strong>Aika:</strong> ${booking.selectedDate} klo ${booking.selectedTime}</p><p>Voit tarkastella varauksen tietoja ja viestiä omistajan kanssa sovelluksen Profiili-sivulla.</p><p>Ystävällisin terveisin,<br>GearSpot-tiimi</p>`
+          );
         }
       }
     } else if (event.type === 'payment_intent.payment_failed') {
@@ -808,9 +842,16 @@ app.post('/api/auth/request-code', async (req, res) => {
     expiresInSeconds: Math.floor(AUTH_CODE_TTL_MS / 1000)
   };
 
-  if (exposeAuthCode) {
+  if (exposeAuthCode || process.env.NODE_ENV === 'test') {
     response.devCode = code;
   }
+
+  await sendEmail(
+    email,
+    'Sisäänkirjautuminen GearSpot -sovellukseen',
+    `Hei!\n\nKirjautumiskoodisi on: ${code}\n\nKoodi on voimassa 10 minuuttia.`,
+    `<h3>Hei!</h3><p>Kirjautumiskoodisi on: <strong>${code}</strong></p><p>Koodi on voimassa 10 minuuttia.</p>`
+  );
 
   return res.json(response);
 });
@@ -2121,7 +2162,7 @@ app.get('/api/bookings/:id/messages', async (req, res) => {
   if (!booking) return res.status(404).json({ error: 'Booking not found' });
 
   if (booking.renterUserId !== session.userId && session.email !== 'admin@gearspot.fi') {
-      if (booking.product.providerId !== session.userId && !booking.product.providerId.includes(session.email)) {
+      if (booking.product.providerId !== session.userId && !(booking.product.providerId || '').includes(session.email)) {
          return res.status(403).json({ error: 'Forbidden' });
       }
   }
@@ -2135,6 +2176,13 @@ app.post('/api/bookings/:id/messages', async (req, res) => {
   const allBookings = await readBookings();
   const booking = allBookings.find(b => b.id === req.params.id);
   if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+  // Authorization check (same as GET)
+  if (booking.renterUserId !== session.userId && session.email !== 'admin@gearspot.fi') {
+      if (booking.product.providerId !== session.userId && !(booking.product.providerId || '').includes(session.email)) {
+         return res.status(403).json({ error: 'Forbidden' });
+      }
+  }
 
   if (!booking.messages) booking.messages = [];
 

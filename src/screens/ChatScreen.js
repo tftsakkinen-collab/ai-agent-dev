@@ -20,7 +20,7 @@ export default function ChatScreen({ route }) {
   const fetchMyUser = async () => {
       try {
           const user = await fetchJson('/api/me');
-          setMyUserId(user.userId);
+          setMyUserId(user.id);
       } catch(e) {
           console.warn(e);
       }

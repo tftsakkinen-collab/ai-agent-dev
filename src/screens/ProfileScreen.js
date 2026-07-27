@@ -46,9 +46,6 @@ export default function ProfileScreen({ navigation }) {
       setEditName(profileData.name || '');
       setEditPhone(profileData.phone || '');
       setFavorites(favoritesData || []);
-      setEditName(profileData.name || '');
-      setEditPhone(profileData.phone || '');
-      setFavorites(favoritesData || []);
       setBookings(bookingsData);
       setReviews(reviewsData);
       setLoginRequired(false);
