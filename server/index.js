@@ -54,7 +54,6 @@ async function sendEmail(to, subject, text, html) { // eslint-disable-line no-un
   }
 }
 
-const { validateRequest, bookingSchema, profileSchema } = require('./src/utils/validation');
 const multer = require('multer');
 const { createAuthProvider } = require('./authProvider');
 const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } });
@@ -241,6 +240,7 @@ const products = [
     name: 'Oulu SUP — Inflatable 10\'6"',
     short: 'Helppo all-around SUP Oulun kesään, mela ja liivi mukana.',
     price: '15 €/tunti · 60 €/päivä',
+    bookingMode: 'instant',
     providerId: 'provider-1',
     searchTerms: ['sup', 'lauta', 'oulu', 'nallikari', 'stand up paddle']
   },
@@ -250,6 +250,7 @@ const products = [
     name: 'Nallikari Touring SUP 11\'2"',
     short: 'Vakaa touring-lauta pidemmille Oulun rantareiteille.',
     price: '18 €/tunti · 65 €/päivä',
+    bookingMode: 'request',
     providerId: 'provider-2',
     searchTerms: ['sup', 'lauta', 'oulu', 'tuppisaari', 'touring']
   },
@@ -984,20 +985,37 @@ app.get('/api/bookings', async (req, res) => {
   res.json(allBookings.filter((booking) => booking.email === session.email).map(getSafeBookingView));
 });
 
-app.post('/api/bookings', validateRequest(bookingSchema), async (req, res) => {
+app.post('/api/bookings', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
   await readOwnerListings();
 
-  const { productId, name, paymentMethod, cardLast4, selectedDate, selectedTime } = req.validatedData;
+  const { productId, name, paymentMethod, cardLast4, termsAccepted, safetyChecklistAccepted, selectedDate, selectedTime } = req.body || {};
+  if (!productId || !name) return res.status(400).json({ error: 'Missing fields' });
+  if (!termsAccepted || !safetyChecklistAccepted) {
+    return res.status(400).json({ error: 'Terms and safety checklist must be accepted before booking' });
+  }
 
   const product = getProductById(productId);
   if (!product) return res.status(404).json({ error: 'Product not found' });
 
   const id = `bkg-${Date.now()}`;
 
-  const pricePerHour = product.pricePerHour || 15;
+  // Dynamic Pricing Implementation
+  let pricePerHour = product.pricePerHour || 15;
+
+  if (selectedDate) {
+    const dateObj = new Date(selectedDate);
+    const dayOfWeek = dateObj.getDay();
+    // 0 is Sunday, 6 is Saturday
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      // Apply weekend multiplier (e.g., 1.5x)
+      pricePerHour = Math.round(pricePerHour * 1.5);
+    }
+  }
+
   const amountToCharge = pricePerHour * 100; // in cents
+  const isInstantBooking = product.bookingMode === 'instant' || !product.bookingMode; // Default to instant
 
   let paymentIntent;
   if (paymentMethod === 'stripe') {
@@ -1028,7 +1046,7 @@ app.post('/api/bookings', validateRequest(bookingSchema), async (req, res) => {
     email: session.email,
     renterUserId: session.userId,
     bookingStatus: 'pending',
-    bookingStage: 'pending_payment',
+    bookingStage: paymentMethod === 'stripe' ? 'pending_payment' : (isInstantBooking ? 'approved' : 'pending_approval'),
     paymentStatus: 'pending',
     paymentIntentId: typeof paymentIntent !== 'undefined' && paymentIntent ? paymentIntent.id : null,
     refundStatus: 'not_requested',
@@ -2201,11 +2219,11 @@ app.post('/api/bookings/:id/messages', async (req, res) => {
 });
 
 // --- User Profile fallback from users to sqlite ---
-app.patch('/api/me', validateRequest(profileSchema), async (req, res) => {
+app.patch('/api/me', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
 
-  const { name, phone } = req.validatedData;
+  const { name, phone } = req.body;
 
   let usersObj = await getStoreValue('gearspot:users');
   if (!usersObj) usersObj = {};
