@@ -57,6 +57,8 @@ async function sendEmail(to, subject, text, html) { // eslint-disable-line no-un
 const multer = require('multer');
 const { createAuthProvider } = require('./authProvider');
 const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } });
+let sharp;
+try { sharp = require('sharp'); } catch(e) { console.warn('Sharp not installed, skipping optimization'); }
 const app = express();
 const port = process.env.PORT || 3000;
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy'); // eslint-disable-line no-unused-vars
@@ -1490,7 +1492,7 @@ app.post('/api/bookings/:id/deposit/claim', async (req, res) => {
   return res.json(getSafeBookingView(booking));
 });
 
-app.post('/api/bookings/:id/evidence', async (req, res) => {
+app.post('/api/bookings/:id/evidence', upload.array('photos', 5), async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
 

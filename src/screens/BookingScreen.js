@@ -3,6 +3,7 @@ import { SafeAreaView, View, Text, TextInput, TouchableOpacity, StyleSheet, Scro
 import ScreenHeader from '../components/ScreenHeader';
 import { fetchJson, getProfile } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
+import WeatherWarning from '../components/WeatherWarning';
 import { useStripe } from '@stripe/stripe-react-native';
 
 export default function BookingScreen({ route, navigation }) {
@@ -67,7 +68,12 @@ export default function BookingScreen({ route, navigation }) {
       const { error: paymentError } = await presentPaymentSheet();
 
       if (paymentError) {
-         showToast('Maksu epäonnistui tai peruttiin', paymentError.message);
+         // Ystävällisempi virheilmoitus maksuvirheille UX:n parantamiseksi
+         if (paymentError.code === 'Canceled') {
+             showToast('Maksu keskeytettiin', 'Voit yrittää maksua uudelleen, kun olet valmis.');
+         } else {
+             showToast('Maksu epäonnistui', \`Tarkista kortin tiedot. (\${paymentError.message})\`);
+         }
       } else {
          showToast('Maksu onnistui!', 'Varaus vahvistettu.');
          navigation.navigate('Profile');
@@ -91,9 +97,13 @@ export default function BookingScreen({ route, navigation }) {
           <Text style={styles.title}>Varaa</Text>
           <Text style={styles.productName}>{product?.name}</Text>
           {selectedDate && selectedTime ? (
-            <Text style={styles.selectedTimeText}>
-              Aika: {selectedDate} klo {selectedTime}
-            </Text>
+            <View>
+              <Text style={styles.selectedTimeText}>
+                Aika: {selectedDate} klo {selectedTime}
+              </Text>
+              {/* Dynamic pricing hint for the frontend: highlight weekend pricing */}
+              {new Date(selectedDate).getDay() === 0 || new Date(selectedDate).getDay() === 6 ? <Text style={{color: '#b33b23', fontWeight: 'bold', marginBottom: 16, marginTop: -10}}>Viikonloppuhinnoittelu voimassa (+50%) - Yhteensä: {product.pricePerHour ? Math.round(product.pricePerHour * 1.5) : 22} €</Text> : <Text style={{color: '#15948b', fontWeight: 'bold', marginBottom: 16, marginTop: -10}}>Normaalihinnoittelu - Yhteensä: {product.pricePerHour || 15} €</Text>}
+            </View>
           ) : null}
           <Text style={styles.info}>Turvallinen maksaminen Stripe-palvelun kautta.</Text>
           <View style={styles.summaryCard}>
@@ -102,6 +112,7 @@ export default function BookingScreen({ route, navigation }) {
             <Text style={styles.summaryItem}>2. Syötä maksutiedot Stripen turvallisessa ikkunassa</Text>
             <Text style={styles.summaryItem}>3. Tarkista vahvistus Profiilista ja testaa palautus</Text>
           </View>
+          <WeatherWarning date={selectedDate} />
           <Text style={styles.label}>Nimi</Text>
           <TextInput placeholder="Nimi" value={name} onChangeText={setName} style={styles.input} autoCapitalize="words" />
           <Text style={styles.label}>Sähköposti</Text>
