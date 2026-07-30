@@ -72,7 +72,7 @@ export default function BookingScreen({ route, navigation }) {
          if (paymentError.code === 'Canceled') {
              showToast('Maksu keskeytettiin', 'Voit yrittää maksua uudelleen, kun olet valmis.');
          } else {
-             showToast('Maksu epäonnistui', \`Tarkista kortin tiedot. (\${paymentError.message})\`);
+             showToast('Maksu epäonnistui', `Tarkista kortin tiedot. (${paymentError.message})`);
          }
       } else {
          showToast('Maksu onnistui!', 'Varaus vahvistettu.');

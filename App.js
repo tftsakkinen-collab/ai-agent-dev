@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { StripeProvider } from '@stripe/stripe-react-native';
 import { STRIPE_PUBLISHABLE_KEY } from './src/config';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { ToastProvider } from './src/contexts/ToastContext';
 import HomeScreen from './src/screens/HomeScreen';
 import ProductDetail from './src/screens/ProductDetail';
 import BookingScreen from './src/screens/BookingScreen';
@@ -30,33 +31,35 @@ export default function App() {
 
   return (
     <AppErrorBoundary routeName={routeName}>
-      <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
-      <NavigationContainer
-        ref={navigationRef}
-        onReady={() => setRouteName(navigationRef.current?.getCurrentRoute()?.name || 'Home')}
-        onStateChange={() => setRouteName(navigationRef.current?.getCurrentRoute()?.name || 'Home')}
-      >
-        <Stack.Navigator initialRouteName="Home" screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Home" component={HomeScreen} />
-          <Stack.Screen name="ProductDetail" component={ProductDetail} />
-          <Stack.Screen name="ProviderDetail" component={ProviderDetail} />
-          <Stack.Screen name="ReviewScreen" component={ReviewScreen} />
-          <Stack.Screen name="RenterReview" component={RenterReviewScreen} />
-          <Stack.Screen name="Booking" component={BookingScreen} />
-          <Stack.Screen name="Profile" component={ProfileScreen} />
-          <Stack.Screen name="FeedbackReports" component={FeedbackReportsScreen} />
-        <Stack.Screen name="Chat" component={ChatScreen} />
-          <Stack.Screen name="AdminOps" component={AdminOpsScreen} />
-          <Stack.Screen name="BecomeHost" component={BecomeHostScreen} />
-          <Stack.Screen name="TermsSafety" component={TermsSafetyScreen} />
-          <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} />
-          <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
-          <Stack.Screen name="Auth" component={AuthScreen} />
-          <Stack.Screen name="MapSearch" component={MapSearchScreen} />
-        </Stack.Navigator>
-        <ReportIssueButton routeName={routeName} />
-      </NavigationContainer>
-      </StripeProvider>
+      <ToastProvider>
+        <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
+          <NavigationContainer
+            ref={navigationRef}
+            onReady={() => setRouteName(navigationRef.current?.getCurrentRoute()?.name || 'Home')}
+            onStateChange={() => setRouteName(navigationRef.current?.getCurrentRoute()?.name || 'Home')}
+          >
+            <Stack.Navigator initialRouteName="Home" screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="Home" component={HomeScreen} />
+              <Stack.Screen name="ProductDetail" component={ProductDetail} />
+              <Stack.Screen name="ProviderDetail" component={ProviderDetail} />
+              <Stack.Screen name="ReviewScreen" component={ReviewScreen} />
+              <Stack.Screen name="RenterReview" component={RenterReviewScreen} />
+              <Stack.Screen name="Booking" component={BookingScreen} />
+              <Stack.Screen name="Profile" component={ProfileScreen} />
+              <Stack.Screen name="FeedbackReports" component={FeedbackReportsScreen} />
+              <Stack.Screen name="Chat" component={ChatScreen} />
+              <Stack.Screen name="AdminOps" component={AdminOpsScreen} />
+              <Stack.Screen name="BecomeHost" component={BecomeHostScreen} />
+              <Stack.Screen name="TermsSafety" component={TermsSafetyScreen} />
+              <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} />
+              <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+              <Stack.Screen name="Auth" component={AuthScreen} />
+              <Stack.Screen name="MapSearch" component={MapSearchScreen} />
+            </Stack.Navigator>
+            <ReportIssueButton routeName={routeName} />
+          </NavigationContainer>
+        </StripeProvider>
+      </ToastProvider>
     </AppErrorBoundary>
   );
 }
