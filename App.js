@@ -26,6 +26,28 @@ import ChatScreen from './src/screens/ChatScreen';
 import TermsOfServiceScreen from './src/screens/TermsOfServiceScreen';
 import PrivacyPolicyScreen from './src/screens/PrivacyPolicyScreen';
 
+import iconFont from 'react-native-vector-icons/Fonts/Feather.ttf';
+
+if (typeof document !== 'undefined') {
+  const iconFontStyles = `
+    @font-face {
+      font-family: 'Feather';
+      src: url('${iconFont}') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+    }
+  `;
+  const style = document.createElement('style');
+  style.type = 'text/css';
+  style.id = 'react-native-vector-icons-feather';
+  if (style.styleSheet) {
+    style.styleSheet.cssText = iconFontStyles;
+  } else {
+    style.appendChild(document.createTextNode(iconFontStyles));
+  }
+  document.head.appendChild(style);
+}
+
 const Stack = createNativeStackNavigator();
 
 const linking = {

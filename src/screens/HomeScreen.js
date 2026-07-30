@@ -98,19 +98,18 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* 3. UNIFIED BRAND COLORS & 4. CLARIFIED FOUNDING HOST TEXT */}
+        {/* 2. UNIFIED BANNER COLOR: BOTH BANNERS USE TEAL (#15948b) */}
         <TouchableOpacity
-          style={styles.foundingHostCard}
+          style={styles.bannerTealCard}
           onPress={() => navigation.navigate('BecomeHost')}
           activeOpacity={0.8}
         >
-          <View style={styles.foundingHostHeader}>
-            <Icon name="award" size={16} color="#15948b" style={{ marginRight: 6 }} />
-            <Text style={styles.foundingHostTitle}>FOUNDING HOST -ETU OULUSSA</Text>
+          <View style={styles.bannerHeaderRow}>
+            <Icon name="award" size={16} color="#00e5d1" style={{ marginRight: 6 }} />
+            <Text style={styles.bannerBadgeText}>FOUNDING HOST -ETU OULUSSA</Text>
           </View>
-          <Text style={styles.foundingHostText}>
-            <Text style={styles.boldText}>0 % välityspalkkiota ensimmäiset 3 kuukautta uustunnuksille!</Text> Liity vuokraajaksi tänään ja ansaitse 100 % tulostasi →
-          </Text>
+          <Text style={styles.bannerTitleText}>0 % välityspalkkiota ensimmäiset 3 kuukautta uustunnuksille!</Text>
+          <Text style={styles.bannerSubtitleText}>Liity vuokraajaksi tänään ja ansaitse 100 % tulostasi →</Text>
         </TouchableOpacity>
 
         {/* HERO BANNER */}
@@ -156,20 +155,18 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* GROUP BOOKING BANNER — UNIFIED TEAL ACCENT & MIN 44PX HEIGHT */}
+        {/* 2. UNIFIED BANNER COLOR: GROUP BOOKING BANNER USES THE EXACT SAME TEAL (#15948b) */}
         <TouchableOpacity
-          style={styles.groupBookingBanner}
+          style={styles.bannerTealCard}
           onPress={() => navigation.navigate('GroupBooking')}
           activeOpacity={0.8}
         >
-          <View style={styles.groupBannerLeft}>
-            <View style={styles.groupBannerHeaderRow}>
-              <Icon name="users" size={16} color="#00e5d1" style={{ marginRight: 6 }} />
-              <Text style={styles.groupBannerBadge}>RYHMÄVARAUS &amp; POLTTARIT</Text>
-            </View>
-            <Text style={styles.groupBannerTitle}>Ryhmävaraus (4–25 henkilöä)</Text>
-            <Text style={styles.groupBannerSubtitle}>Varaa useampi lauta, ohjaaja &amp; kuljetus rannalle yhdellä laakilla →</Text>
+          <View style={styles.bannerHeaderRow}>
+            <Icon name="users" size={16} color="#00e5d1" style={{ marginRight: 6 }} />
+            <Text style={styles.bannerBadgeText}>RYHMÄVARAUS &amp; POLTTARIT</Text>
           </View>
+          <Text style={styles.bannerTitleText}>Ryhmävaraus (4–25 henkilöä)</Text>
+          <Text style={styles.bannerSubtitleText}>Varaa useampi lauta, ohjaaja &amp; kuljetus rannalle yhdellä laakilla →</Text>
         </TouchableOpacity>
 
         {/* GUIDES SECTION */}
@@ -289,21 +286,21 @@ const styles = StyleSheet.create({
   },
   profileBtnText: { color: '#ffffff', fontSize: 13, fontWeight: '800' },
 
-  // UNIFIED TEAL BRAND COLOR FOR PROMO BANNER
-  foundingHostCard: {
-    minHeight: 54,
-    backgroundColor: '#e6f7f5',
-    borderColor: '#15948b',
-    borderWidth: 1.5,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 14,
-    justifyContent: 'center'
+  // UNIFIED BRAND TEAL BANNER (#15948b) FOR BOTH BANNERS
+  bannerTealCard: {
+    minHeight: 60,
+    backgroundColor: '#15948b',
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8
   },
-  foundingHostHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  foundingHostTitle: { fontSize: 12, fontWeight: '900', color: '#0e6962', letterSpacing: 0.5 },
-  foundingHostText: { fontSize: 12, color: '#0f2f3d', lineHeight: 18 },
-  boldText: { fontWeight: '800', color: '#0e6962' },
+  bannerHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  bannerBadgeText: { color: '#00e5d1', fontSize: 11, fontWeight: '900', letterSpacing: 0.5, uppercase: true },
+  bannerTitleText: { color: '#ffffff', fontSize: 16, fontWeight: '800', marginBottom: 4 },
+  bannerSubtitleText: { color: '#e6f7f5', fontSize: 12, lineHeight: 17 },
 
   // HERO CARD
   heroCard: {
@@ -343,7 +340,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 14,
     flexDirection: 'row',
-    justifyContent: 'center',
+    justify: 'center',
     alignItems: 'center'
   },
   searchButtonText: { color: '#ffffff', fontWeight: '800', fontSize: 13 },
@@ -363,23 +360,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.18)'
   },
   locationChipText: { color: '#ffffff', fontSize: 13, fontWeight: '700' },
-
-  // GROUP BOOKING BANNER — MIN 44PX HEIGHT
-  groupBookingBanner: {
-    minHeight: 60,
-    backgroundColor: '#15948b',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8
-  },
-  groupBannerLeft: {},
-  groupBannerHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  groupBannerBadge: { color: '#00e5d1', fontSize: 11, fontWeight: '900', letterSpacing: 0.5, uppercase: true },
-  groupBannerTitle: { color: '#ffffff', fontSize: 17, fontWeight: '800', marginBottom: 4 },
-  groupBannerSubtitle: { color: '#e6f7f5', fontSize: 12, lineHeight: 17 },
 
   // GUIDES
   guideRow: { marginBottom: 16 },
@@ -429,7 +409,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
     borderWidth: 1,
     borderColor: '#d2dfa6',
-    justifyContent: 'center',
+    justify: 'center',
     alignItems: 'center'
   },
   filterChipActive: { backgroundColor: '#15948b', borderColor: '#15948b' },
@@ -444,7 +424,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 14,
     backgroundColor: '#f0f4f7',
-    justifyContent: 'center',
+    justify: 'center',
     alignItems: 'center'
   },
   sortChipActive: { backgroundColor: '#0f2f3d' },
