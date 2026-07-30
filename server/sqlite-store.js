@@ -24,33 +24,35 @@ let sqliteInitPromise = null;
 
 if (!sql) {
   try {
-    const sqlite3 = require('sqlite3').verbose();
-    let dbPath = ':memory:';
+    // Only attempt sqlite3 in non-Vercel environment or if native binary works
+    if (!process.env.VERCEL) {
+      const sqlite3 = require('sqlite3').verbose();
+      let dbPath = ':memory:';
 
-    if (process.env.NODE_ENV === 'test') {
-      dbPath = ':memory:';
-    } else if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
-      // /tmp is guaranteed writable in Vercel Serverless environment
-      dbPath = path.join('/tmp', 'gearspot.sqlite');
-    } else {
-      dbPath = path.join(__dirname, 'gearspot.sqlite');
-    }
+      if (process.env.NODE_ENV === 'test') {
+        dbPath = ':memory:';
+      } else {
+        dbPath = path.join(__dirname, 'gearspot.sqlite');
+      }
 
-    db = new sqlite3.Database(dbPath);
+      db = new sqlite3.Database(dbPath);
 
-    sqliteInitPromise = new Promise((resolve) => {
-      db.run(
-        `CREATE TABLE IF NOT EXISTS store (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
-        (err) => {
-          if (err) {
-            console.error('[sqlite-store] SQLite table init error:', err.message);
+      sqliteInitPromise = new Promise((resolve) => {
+        db.run(
+          `CREATE TABLE IF NOT EXISTS store (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+          (err) => {
+            if (err) {
+              console.error('[sqlite-store] SQLite table init error:', err.message);
+            }
+            resolve();
           }
-          resolve();
-        }
-      );
-    });
+        );
+      });
+    } else {
+      console.log('[sqlite-store] Running on Vercel Serverless, using KV/Postgres/Memory store fallback');
+    }
   } catch (err) {
-    console.warn('[sqlite-store] SQLite init failed, using in-memory store:', err.message);
+    console.warn('[sqlite-store] SQLite init skipped or failed, using in-memory store:', err.message);
   }
 }
 
