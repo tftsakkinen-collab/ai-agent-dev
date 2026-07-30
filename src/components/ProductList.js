@@ -57,7 +57,7 @@ export default function ProductList({ products = [], loading = false, selectedLo
     return (
       <TouchableOpacity
         style={styles.card}
-        onPress={() => navigation?.navigate('ProductDetail', { product: item })}
+        onPress={() => navigation?.navigate('ProductDetail', { productId: item.id, product: item })}
         activeOpacity={0.8}
         accessibilityLabel={`${item.name}, hinta ${item.price}`}
         accessibilityRole="button"
@@ -100,7 +100,7 @@ export default function ProductList({ products = [], loading = false, selectedLo
     );
   };
 
-  // 1. ACTIVE DEMAND LEAD CAPTURE FORM WHEN NO PRODUCTS ARE AVAILABLE
+  // ACTIVE DEMAND LEAD CAPTURE FORM WHEN NO PRODUCTS ARE AVAILABLE
   if (products.length === 0) {
     return (
       <View style={styles.leadCaptureCard} accessibilityLabel="Kysynnän ilmoittautumislomake">
@@ -119,7 +119,7 @@ export default function ProductList({ products = [], loading = false, selectedLo
 
         {leadSubmitted ? (
           <View style={styles.successBox}>
-            <Icon name="check-circle" size={16} color="#0e6962" style={{ marginRight: 6 }} accessibilityLabel="Vahvistusilmoitus" />
+            <Icon name="check-circle" size={16} color="#0e6962" style={{ marginRight: 6 }} />
             <Text style={styles.successText}>
               {lang === 'fi' ? 'Sähköposti tallennettu! Ilmoitamme sinulle ensimmäisenä.' : 'Email saved! We will notify you first.'}
             </Text>

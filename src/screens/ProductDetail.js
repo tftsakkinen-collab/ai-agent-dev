@@ -6,9 +6,11 @@ import { getFavorites, addFavorite, removeFavorite, fetchJson } from '../lib/api
 import Icon from 'react-native-vector-icons/Feather';
 
 export default function ProductDetail({ route, navigation }) {
-  const { product: initialProduct, productId } = route.params || {};
+  const { product: initialProduct, productId: paramProductId, id: routeId } = route.params || {};
+  const targetId = paramProductId || routeId || (initialProduct ? initialProduct.id : null);
+
   const [product, setProduct] = useState(initialProduct || null);
-  const [loadingProduct, setLoadingProduct] = useState(!initialProduct && Boolean(productId));
+  const [loadingProduct, setLoadingProduct] = useState(!initialProduct && Boolean(targetId));
 
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
@@ -16,18 +18,25 @@ export default function ProductDetail({ route, navigation }) {
   const [toastMessage, setToastMessage] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
 
+  // 2. FETCH PRODUCT INDEPENDENTLY FROM API BY URL PARAM ID
   useEffect(() => {
-    if (!product && productId) {
-      setLoadingProduct(true);
+    if (targetId) {
+      setLoadingProduct(!product);
       fetchJson('/api/products')
         .then((allProducts) => {
-          const found = allProducts.find(p => String(p.id) === String(productId));
-          if (found) setProduct(found);
+          const found = allProducts.find(p => String(p.id).toLowerCase() === String(targetId).toLowerCase());
+          if (found) {
+            setProduct(found);
+          }
         })
-        .catch(() => {})
-        .finally(() => setLoadingProduct(false));
+        .catch((err) => {
+          console.error('[ProductDetail] Error fetching product:', err);
+        })
+        .finally(() => {
+          setLoadingProduct(false);
+        });
     }
-  }, [productId, product]);
+  }, [targetId]);
 
   useEffect(() => {
     checkFavorite();
@@ -92,7 +101,7 @@ export default function ProductDetail({ route, navigation }) {
       <SafeAreaView style={styles.safe}>
         <ScreenHeader title="Tuotetta ei löytynyt" onBack={() => navigation.goBack()} />
         <View style={styles.notFoundContainer}>
-          <Text style={styles.notFoundText}>Haluamaasi lautaa ei löytynyt tai se on poistunut valikoimasta.</Text>
+          <Text style={styles.notFoundText}>Haluamaasi lautaa ({targetId || 'undefined'}) ei löytynyt valikoimasta.</Text>
           <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate('Home')}>
             <Text style={styles.primaryButtonText}>Palaa etusivulle</Text>
           </TouchableOpacity>
