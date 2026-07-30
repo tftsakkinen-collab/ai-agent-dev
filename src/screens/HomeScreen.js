@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { SafeAreaView, Text, StyleSheet, View, TouchableOpacity, TextInput, ScrollView } from 'react-native';
-import ScreenHeader from '../components/ScreenHeader';
 import ProductList from '../components/ProductList';
 import { fetchJson } from '../lib/api';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -16,6 +15,11 @@ const categoryCards = [
   { title: '🏄 All-round SUP', label: 'Täydellinen aloittelijalle & rennolle retkelle Oulujoella', query: 'all-round' },
   { title: '⚡ Touring SUP', label: 'Nopeampi ja pidempi malli pidemmille reiteille & Nallikariin', query: 'touring' },
   { title: '👨‍👩‍👧 Kaksikko / Perhe-SUP', label: 'Isompi kantavuus 2 henkilölle tai retkivarusteille', query: 'kaksikko' }
+];
+
+const guideArticles = [
+  { title: '🚣 Paras SUP-reitti Oulussa (3 Reittiä)', slug: 'paras-sup-reitti-oulussa', desc: 'Reittiohjeet Tuiran suistoon, Nallikariin ja Kuivasjärvelle.' },
+  { title: '🏖️ Nallikari vai Hietasaari — Kumpa Sopii Sinulle?', slug: 'nallikari-vai-hietasaari', desc: 'Vertailussa tuuliolosuhteet, rannat ja palvelut.' }
 ];
 
 export default function HomeScreen({ navigation }) {
@@ -153,6 +157,22 @@ export default function HomeScreen({ navigation }) {
           </View>
         </TouchableOpacity>
 
+        {/* 13. AEO / SEO GUIDES SECTION */}
+        <Text style={styles.sectionTitle}>📖 Oulun SUP-Oppaat &amp; Reitit (AEO / SEO)</Text>
+        <View style={styles.guideRow}>
+          {guideArticles.map((article) => (
+            <TouchableOpacity
+              key={article.slug}
+              style={styles.guideCard}
+              onPress={() => navigation.navigate('GuideArticle', { slug: article.slug })}
+            >
+              <Text style={styles.guideTitle}>{article.title}</Text>
+              <Text style={styles.guideDesc}>{article.desc}</Text>
+              <Text style={styles.guideLink}>Lue opas &amp; vastaus →</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         {/* CATEGORY CARDS */}
         <Text style={styles.sectionTitle}>{t('categoriesTitle')}</Text>
         <View style={styles.categoryRow}>
@@ -279,6 +299,11 @@ const styles = StyleSheet.create({
   groupBannerBadge: { color: '#a7f3d0', fontSize: 11, fontWeight: '900', letterSpacing: 0.5, uppercase: true, marginBottom: 4 },
   groupBannerTitle: { color: '#ffffff', fontSize: 17, fontWeight: '800', marginBottom: 4 },
   groupBannerSubtitle: { color: '#e6f7f5', fontSize: 12, lineHeight: 17 },
+  guideRow: { marginBottom: 16 },
+  guideCard: { backgroundColor: '#ffffff', borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#e2ebf0' },
+  guideTitle: { fontSize: 14, fontWeight: '800', color: '#0f2f3d', marginBottom: 4 },
+  guideDesc: { fontSize: 11, color: '#687e8c', marginBottom: 8, lineHeight: 16 },
+  guideLink: { fontSize: 12, color: '#15948b', fontWeight: '800' },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0f2f3d', marginBottom: 10, marginTop: 4 },
   sectionSubtitle: { fontSize: 12, color: '#687e8c', marginBottom: 12 },
   categoryRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 16 },

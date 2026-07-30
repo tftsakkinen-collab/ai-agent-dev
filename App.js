@@ -9,6 +9,7 @@ import HomeScreen from './src/screens/HomeScreen';
 import ProductDetail from './src/screens/ProductDetail';
 import BookingScreen from './src/screens/BookingScreen';
 import GroupBookingScreen from './src/screens/GroupBookingScreen';
+import GuideArticleScreen from './src/screens/GuideArticleScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import AuthScreen from './src/screens/AuthScreen';
 import MapSearchScreen from './src/screens/MapSearchScreen';
@@ -42,6 +43,7 @@ const linking = {
       ProviderDetail: 'tarjoaja/:providerId',
       Booking: 'varaa/:productId',
       GroupBooking: 'ryhmavaraus',
+      GuideArticle: 'opas/:slug',
       Profile: 'profiili',
       MapSearch: 'noutopiste/:initialQuery?',
       BecomeHost: 'liity-isannaksi',
@@ -81,6 +83,7 @@ export default function App() {
                 <Stack.Screen name="RenterReview" component={RenterReviewScreen} />
                 <Stack.Screen name="Booking" component={BookingScreen} />
                 <Stack.Screen name="GroupBooking" component={GroupBookingScreen} />
+                <Stack.Screen name="GuideArticle" component={GuideArticleScreen} />
                 <Stack.Screen name="Profile" component={ProfileScreen} />
                 <Stack.Screen name="FeedbackReports" component={FeedbackReportsScreen} />
                 <Stack.Screen name="Chat" component={ChatScreen} />
