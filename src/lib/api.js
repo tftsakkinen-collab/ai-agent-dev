@@ -1,6 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import { API_BASE_URL } from '../config';
+import {
+  getCached,
+  setCached,
+  isUnauthProfileCached,
+  setUnauthProfileCached,
+  resetUnauthProfileState,
+  clearCached
+} from './apiCache';
+
 const BASE_URL = API_BASE_URL;
 
 function buildUrl(path) {
@@ -31,6 +39,8 @@ export async function getToken() {
 }
 
 export async function logout() {
+  resetUnauthProfileState();
+  clearCached();
   return AsyncStorage.removeItem('token');
 }
 
@@ -41,17 +51,33 @@ export async function fetchWithAuth(path, options = {}) {
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(url, Object.assign({}, options, { headers }));
-  if (res.status === 401) throw new Error('Unauthorized');
+  if (res.status === 401) {
+    if (path === '/api/me') setUnauthProfileCached();
+    throw new Error('Unauthorized');
+  }
   return res;
 }
 
 export async function fetchJson(path, options = {}) {
+  const isGet = !options.method || options.method.toUpperCase() === 'GET';
+
+  // 1. TOISTUVIEN KUTSUJEN VÄLILUKU
+  if (isGet && (path === '/api/products' || path === '/api/categories')) {
+    const cached = getCached(path);
+    if (cached) return cached;
+  }
+
   const res = await fetchWithAuth(path, options);
   const json = await res.json();
   if (!res.ok) {
     const message = json?.error || res.statusText || 'API error';
     throw new Error(message);
   }
+
+  if (isGet && (path === '/api/products' || path === '/api/categories')) {
+    setCached(path, json);
+  }
+
   return json;
 }
 
@@ -65,6 +91,8 @@ export async function login(email) {
   const json = await res.json();
   if (!res.ok) throw new Error(json?.error || 'Kirjautuminen epäonnistui');
   await AsyncStorage.setItem('token', json.token);
+  resetUnauthProfileState();
+  clearCached();
   return json;
 }
 
@@ -93,9 +121,10 @@ export async function verifyLoginCode(email, code) {
   const json = await res.json();
   if (!res.ok) throw new Error(json?.error || 'Koodin vahvistus epäonnistui');
   await AsyncStorage.setItem('token', json.token);
+  resetUnauthProfileState();
+  clearCached();
   return json;
 }
-
 
 export async function getFavorites() {
   return fetchJson('/api/favorites');
@@ -115,8 +144,30 @@ export async function removeFavorite(productId) {
   });
 }
 
+// 3. VÄHENNÄ /api/me-KUTSUJEN MÄÄRÄÄ
 export async function getProfile() {
-  return fetchJson('/api/me');
+  const token = await getToken();
+  if (!token) {
+    return null; // Don't call network if not logged in!
+  }
+
+  if (isUnauthProfileCached()) {
+    return null; // Don't repeat unauth 401 network requests!
+  }
+
+  const cached = getCached('/api/me');
+  if (cached) return cached;
+
+  try {
+    const profile = await fetchJson('/api/me');
+    setCached('/api/me', profile);
+    return profile;
+  } catch (err) {
+    if (err.message === 'Unauthorized') {
+      setUnauthProfileCached();
+    }
+    return null;
+  }
 }
 
 export async function reportIssue({ message, reporterEmail, routeName, context, errorDetails } = {}) {
@@ -301,6 +352,8 @@ export async function verifyMagicLink(token, email = null) {
   if (json.token) {
     await AsyncStorage.setItem('token', json.token);
   }
+  resetUnauthProfileState();
+  clearCached();
   return json;
 }
 
@@ -513,4 +566,3 @@ export async function postDemandLead(email, locationName) {
     body: JSON.stringify({ email, locationName })
   });
 }
-

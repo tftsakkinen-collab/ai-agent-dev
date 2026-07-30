@@ -1837,10 +1837,12 @@ app.get('/api/feedback-reports', async (req, res) => {
 });
 
 app.get('/api/categories', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
   res.json(categories);
 });
 
 app.get('/api/products', async (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
   await readOwnerListings();
   res.json(getPublicProducts().map(buildProductResponse));
 });
