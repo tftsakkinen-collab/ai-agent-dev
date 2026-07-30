@@ -10,6 +10,7 @@ import {
 } from './apiCache';
 
 const BASE_URL = API_BASE_URL;
+let inFlightProfilePromise = null;
 
 function buildUrl(path) {
   if (!path) return BASE_URL;
@@ -35,12 +36,17 @@ function getClientEnvironment() {
 }
 
 export async function getToken() {
-  const token = await AsyncStorage.getItem('token');
-  if (!token || token === 'null' || token === 'undefined') return null;
-  return token;
+  try {
+    const token = await AsyncStorage.getItem('token');
+    if (!token || token === 'null' || token === 'undefined' || token.trim() === '') return null;
+    return token;
+  } catch (e) {
+    return null;
+  }
 }
 
 export async function logout() {
+  inFlightProfilePromise = null;
   resetUnauthProfileState();
   clearCached();
   return AsyncStorage.removeItem('token');
@@ -91,6 +97,7 @@ export async function fetchJson(path, options = {}) {
 }
 
 export async function login(email) {
+  inFlightProfilePromise = null;
   const url = buildUrl('/api/auth/login');
   const res = await fetch(url, {
     method: 'POST',
@@ -121,6 +128,7 @@ export async function requestLoginCode(email) {
 }
 
 export async function verifyLoginCode(email, code) {
+  inFlightProfilePromise = null;
   const url = buildUrl('/api/auth/verify-code');
   const res = await fetch(url, {
     method: 'POST',
@@ -155,10 +163,11 @@ export async function removeFavorite(productId) {
   });
 }
 
-// 3. ZERO UNNECESSARY /api/me NETWORK CALLS
+// 3. ZERO UNNECESSARY /api/me NETWORK CALLS WITH SINGLE-FLIGHT DEDUPLICATION
 export async function getProfile() {
   const token = await getToken();
   if (!token) {
+    setUnauthProfileCached();
     return null; // Return null immediately without network call!
   }
 
@@ -169,16 +178,25 @@ export async function getProfile() {
   const cached = getCached('/api/me');
   if (cached) return cached;
 
-  try {
-    const profile = await fetchJson('/api/me');
-    setCached('/api/me', profile);
-    return profile;
-  } catch (err) {
-    if (err.message === 'Unauthorized') {
-      setUnauthProfileCached();
-    }
-    return null;
+  // Single-flight deduplication: reuse active in-flight request promise
+  if (inFlightProfilePromise) {
+    return inFlightProfilePromise;
   }
+
+  inFlightProfilePromise = (async () => {
+    try {
+      const profile = await fetchJson('/api/me');
+      setCached('/api/me', profile);
+      return profile;
+    } catch (err) {
+      setUnauthProfileCached();
+      return null;
+    } finally {
+      inFlightProfilePromise = null;
+    }
+  })();
+
+  return inFlightProfilePromise;
 }
 
 export async function reportIssue({ message, reporterEmail, routeName, context, errorDetails } = {}) {
@@ -350,6 +368,7 @@ export async function requestMagicLink(email) {
 }
 
 export async function verifyMagicLink(token, email = null) {
+  inFlightProfilePromise = null;
   const payload = { token };
   if (email) payload.email = email;
   
