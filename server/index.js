@@ -1116,10 +1116,12 @@ app.post('/api/bookings', async (req, res) => {
       paymentIntent = await stripe.paymentIntents.create({
         amount: amountToCharge,
         currency: 'eur',
+        capture_method: 'manual',
         metadata: {
           bookingId: id,
           productId: product.id,
           renterId: session.userId,
+          depositHold: 'true'
         },
       });
     } catch (err) {
