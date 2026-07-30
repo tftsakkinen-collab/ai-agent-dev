@@ -110,9 +110,18 @@ const authProvider = createAuthProvider({
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY
 });
 
+const defaultAllowedOrigins = ['https://gearspot.xyz', 'https://www.gearspot.xyz', 'https://ai-agent-dev-eight.vercel.app'];
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' ? process.env.ALLOWED_ORIGINS?.split(',') || [] : '*',
-  optionsSuccessStatus: 200
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (process.env.ALLOWED_ORIGINS) {
+      const allowed = process.env.ALLOWED_ORIGINS.split(',');
+      if (allowed.includes(origin) || allowed.includes('*')) return callback(null, true);
+    }
+    return callback(null, true);
+  },
+  optionsSuccessStatus: 200,
+  credentials: true
 };
 app.use(cors(corsOptions));
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
