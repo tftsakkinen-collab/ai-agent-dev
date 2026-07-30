@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { SafeAreaView, View, Text, FlatList, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput, Image } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
+import { useAuth } from '../contexts/AuthContext';
 import {
   claimBookingDeposit,
   fetchJson,
   getBookingReviews,
-  getProfile,
   logout,
   releaseBookingDeposit,
   setupBookingDeposit,
@@ -25,37 +25,41 @@ export default function ProfileScreen({ navigation }) {
   const [editPhone, setEditPhone] = useState('');
   const [favorites, setFavorites] = useState([]);
 
+  const { user, refreshProfile } = useAuth();
+
   useEffect(() => {
     fetchMyData();
-  }, []);
+  }, [user]);
 
   const fetchMyData = async () => {
-    try {
-      const notifsResponse = await fetchJson('/api/notifications');
-      if (Array.isArray(notifsResponse)) setNotifications(notifsResponse);
-    } catch (e) { console.warn(e); }
-
-    try {
-      const [profileData, bookingsData, reviewsData, favoritesData] = await Promise.all([
-        getProfile(),
-        fetchJson('/api/bookings'),
-        fetchJson('/api/reviews/renter'),
-        fetchJson('/api/favorites').catch(() => []),
-      ]);
-      setProfile(profileData);
-      setEditName(profileData.name || '');
-      setEditPhone(profileData.phone || '');
-      setFavorites(favoritesData || []);
-      setBookings(bookingsData);
-      setReviews(reviewsData);
-      setLoginRequired(false);
-    } catch (error) {
+    if (!user) {
       setLoginRequired(true);
       setProfile(null);
       setBookings([]);
       setReviews([]);
       setFavorites([]);
-      setFavorites([]);
+      return;
+    }
+
+    setLoginRequired(false);
+    setProfile(user);
+    setEditName(user.name || '');
+    setEditPhone(user.phone || '');
+
+    try {
+      const notifsResponse = await fetchJson('/api/notifications').catch(() => []);
+      if (Array.isArray(notifsResponse)) setNotifications(notifsResponse);
+
+      const [bookingsData, reviewsData, favoritesData] = await Promise.all([
+        fetchJson('/api/bookings').catch(() => []),
+        fetchJson('/api/reviews/renter').catch(() => []),
+        fetchJson('/api/favorites').catch(() => []),
+      ]);
+      setFavorites(favoritesData || []);
+      setBookings(bookingsData || []);
+      setReviews(reviewsData || []);
+    } catch (e) {
+      console.warn(e);
     }
   };
 

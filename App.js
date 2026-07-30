@@ -82,6 +82,8 @@ const linking = {
   }
 };
 
+import { AuthProvider } from './src/contexts/AuthContext';
+
 export default function App() {
   const navigationRef = useRef(null);
   const [routeName, setRouteName] = useState('Home');
@@ -89,7 +91,8 @@ export default function App() {
   return (
     <AppErrorBoundary routeName={routeName}>
       <LanguageProvider>
-        <ToastProvider>
+        <AuthProvider>
+          <ToastProvider>
           <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
             <NavigationContainer
               ref={navigationRef}
@@ -121,7 +124,8 @@ export default function App() {
             </NavigationContainer>
           </StripeProvider>
         </ToastProvider>
-      </LanguageProvider>
-    </AppErrorBoundary>
+      </AuthProvider>
+    </LanguageProvider>
+  </AppErrorBoundary>
   );
 }

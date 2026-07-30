@@ -7,6 +7,7 @@ import WeatherWarning from '../components/WeatherWarning';
 import { useStripe } from '@stripe/stripe-react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import { calculateRentalPrice } from '../lib/priceCalculator';
 
 const ADD_ON_OPTIONS = [
@@ -92,11 +93,13 @@ export default function BookingScreen({ route, navigation }) {
     }
   }, [targetId]);
 
+  const { user } = useAuth();
+
   useEffect(() => {
-    getProfile()
-      .then((profile) => setEmail(profile.email || ''))
-      .catch(() => setEmail(''));
-  }, []);
+    if (user?.email) {
+      setEmail(user.email);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (product?.locationName) {
