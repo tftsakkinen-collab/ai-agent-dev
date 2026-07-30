@@ -8,8 +8,8 @@ import Icon from 'react-native-vector-icons/Feather';
 const quickLocationItems = [
   { icon: 'sun', label: 'Nallikari Beach', query: 'Nallikari Oulu' },
   { icon: 'droplet', label: 'Tuira (Oulujoki)', query: 'Tuiran ranta Oulu' },
-  { label: 'Hietasaari', icon: 'compass', query: 'Hietasaari Oulu' },
-  { label: 'Linnanmaa', icon: 'map-pin', query: 'Linnanmaa Oulu' }
+  { icon: 'compass', label: 'Hietasaari', query: 'Hietasaari Oulu' },
+  { icon: 'map-pin', label: 'Linnanmaa', query: 'Linnanmaa Oulu' }
 ];
 
 const categoryCards = [
@@ -83,7 +83,7 @@ export default function HomeScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        {/* HEADER WITH MIN 44PX TOUCH TARGETS */}
+        {/* TOP HEADER BAR — ALL BUTTONS MIN 44PX HEIGHT */}
         <View style={styles.topHeaderBar}>
           <Text style={styles.brandTitle}>GearSpot <Text style={styles.brandBadge}>OULU</Text></Text>
           <View style={styles.headerRightGroup}>
@@ -98,14 +98,14 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* 4. CLARIFIED FOUNDING HOST BANNER WITH UNIFIED WARM AMBER COLOR */}
+        {/* 3. UNIFIED BRAND COLORS & 4. CLARIFIED FOUNDING HOST TEXT */}
         <TouchableOpacity
           style={styles.foundingHostCard}
           onPress={() => navigation.navigate('BecomeHost')}
           activeOpacity={0.8}
         >
           <View style={styles.foundingHostHeader}>
-            <Icon name="award" size={16} color="#d97706" style={{ marginRight: 6 }} />
+            <Icon name="award" size={16} color="#15948b" style={{ marginRight: 6 }} />
             <Text style={styles.foundingHostTitle}>FOUNDING HOST -ETU OULUSSA</Text>
           </View>
           <Text style={styles.foundingHostText}>
@@ -113,7 +113,7 @@ export default function HomeScreen({ navigation }) {
           </Text>
         </TouchableOpacity>
 
-        {/* HERO BANNER WITH UNIFIED TEAL/NAVY COLORS */}
+        {/* HERO BANNER */}
         <View style={styles.heroCard}>
           <View style={styles.badgeRow}>
             <Icon name="sun" size={14} color="#00e5d1" style={{ marginRight: 6 }} />
@@ -134,11 +134,12 @@ export default function HomeScreen({ navigation }) {
               onSubmitEditing={goToSearch}
             />
             <TouchableOpacity style={styles.searchButton} onPress={goToSearch} activeOpacity={0.8}>
+              <Icon name="search" size={14} color="#ffffff" style={{ marginRight: 6 }} />
               <Text style={styles.searchButtonText}>{t('searchBtn')}</Text>
             </TouchableOpacity>
           </View>
 
-          {/* OULU LOCATION CHIPS WITH MIN 44PX HEIGHT */}
+          {/* OULU LOCATION CHIPS — MIN 44PX HEIGHT */}
           <Text style={styles.chipSectionLabel}>{t('popularLocations')}</Text>
           <View style={styles.chipRow}>
             {quickLocationItems.map((item) => (
@@ -155,7 +156,7 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* GROUP BOOKING BANNER WITH UNIFIED TEAL BRAND COLOR & 44PX TOUCH AREA */}
+        {/* GROUP BOOKING BANNER — UNIFIED TEAL ACCENT & MIN 44PX HEIGHT */}
         <TouchableOpacity
           style={styles.groupBookingBanner}
           onPress={() => navigation.navigate('GroupBooking')}
@@ -171,7 +172,7 @@ export default function HomeScreen({ navigation }) {
           </View>
         </TouchableOpacity>
 
-        {/* GUIDES SECTION WITH CLEAN FEATHER ICONS */}
+        {/* GUIDES SECTION */}
         <Text style={styles.sectionTitle}>Oulun SUP-Oppaat &amp; Reitit</Text>
         <View style={styles.guideRow}>
           {guideArticles.map((article) => (
@@ -210,7 +211,7 @@ export default function HomeScreen({ navigation }) {
           ))}
         </View>
 
-        {/* LOCATION & SORT FILTERS WITH MIN 44PX TOUCH TARGETS */}
+        {/* LOCATION & SORT FILTERS — ALL BUTTONS MIN 44PX HEIGHT */}
         <View style={styles.filterSection}>
           <Text style={styles.filterSectionTitle}>Noutopiste Oulussa:</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
@@ -257,7 +258,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f0f4f7' },
   container: { padding: 16, paddingBottom: 50 },
 
-  // TOP HEADER BAR WITH MIN 44PX TOUCH TARGETS
+  // TOP HEADER BAR — MIN 44PX HEIGHT FOR ALL TOUCH TARGETS
   topHeaderBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   brandTitle: { fontSize: 22, fontWeight: '900', color: '#0f2f3d' },
   brandBadge: { color: '#15948b', fontSize: 13, fontWeight: '800' },
@@ -265,8 +266,8 @@ const styles = StyleSheet.create({
   langToggleBtn: {
     minHeight: 44,
     backgroundColor: '#ffffff',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#d2dfa6',
@@ -279,7 +280,7 @@ const styles = StyleSheet.create({
   profileBtn: {
     minHeight: 44,
     backgroundColor: '#15948b',
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 14,
     flexDirection: 'row',
@@ -288,21 +289,21 @@ const styles = StyleSheet.create({
   },
   profileBtnText: { color: '#ffffff', fontSize: 13, fontWeight: '800' },
 
-  // UNIFIED SECONDARY ACCENT (WARM AMBER / GOLD) FOR PROMO BANNER
+  // UNIFIED TEAL BRAND COLOR FOR PROMO BANNER
   foundingHostCard: {
     minHeight: 54,
-    backgroundColor: '#fff8e6',
-    borderColor: '#ffd666',
+    backgroundColor: '#e6f7f5',
+    borderColor: '#15948b',
     borderWidth: 1.5,
     borderRadius: 16,
     padding: 14,
     marginBottom: 14,
-    justify: 'center'
+    justifyContent: 'center'
   },
   foundingHostHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  foundingHostTitle: { fontSize: 12, fontWeight: '900', color: '#d97706', letterSpacing: 0.5 },
-  foundingHostText: { fontSize: 12, color: '#78350f', lineHeight: 18 },
-  boldText: { fontWeight: '800', color: '#0f2f3d' },
+  foundingHostTitle: { fontSize: 12, fontWeight: '900', color: '#0e6962', letterSpacing: 0.5 },
+  foundingHostText: { fontSize: 12, color: '#0f2f3d', lineHeight: 18 },
+  boldText: { fontWeight: '800', color: '#0e6962' },
 
   // HERO CARD
   heroCard: {
@@ -341,6 +342,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 14,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center'
   },
@@ -348,21 +350,21 @@ const styles = StyleSheet.create({
   chipSectionLabel: { fontSize: 12, color: '#90aab8', fontWeight: '700', marginBottom: 8 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 
-  // LOCATION CHIPS WITH MIN 44PX HEIGHT
+  // LOCATION CHIPS — MIN 44PX HEIGHT
   locationChip: {
     minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.12)',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)'
   },
   locationChipText: { color: '#ffffff', fontSize: 13, fontWeight: '700' },
 
-  // GROUP BOOKING BANNER WITH MIN 44PX AREA
+  // GROUP BOOKING BANNER — MIN 44PX HEIGHT
   groupBookingBanner: {
     minHeight: 60,
     backgroundColor: '#15948b',
@@ -395,7 +397,7 @@ const styles = StyleSheet.create({
   guideDesc: { fontSize: 11, color: '#687e8c', marginBottom: 8, lineHeight: 16 },
   guideLink: { fontSize: 12, color: '#15948b', fontWeight: '800' },
 
-  // CATEGORY CARDS WITH MIN 44PX AREA
+  // CATEGORY CARDS — MIN 44PX AREA
   sectionTitle: { fontSize: 18, fontWeight: '800', color: '#0f2f3d', marginBottom: 10, marginTop: 4 },
   sectionSubtitle: { fontSize: 12, color: '#687e8c', marginBottom: 12 },
   categoryRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 16 },
@@ -414,13 +416,13 @@ const styles = StyleSheet.create({
   categoryTitle: { fontSize: 14, fontWeight: '800', color: '#0f2f3d' },
   categoryLabel: { fontSize: 11, color: '#687e8c', lineHeight: 16 },
 
-  // FILTER SECTION WITH MIN 44PX CHIPS
+  // FILTER SECTION — MIN 44PX CHIPS FOR ALL FILTER AND SORT BUTTONS
   filterSection: { backgroundColor: '#ffffff', borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: '#e2ebf0' },
   filterSectionTitle: { fontSize: 12, fontWeight: '800', color: '#0f2f3d', marginBottom: 8, uppercase: true },
   horizontalScroll: { marginBottom: 12 },
   filterChip: {
     minHeight: 44,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 14,
     backgroundColor: '#f0f4f7',
@@ -438,15 +440,15 @@ const styles = StyleSheet.create({
   sortLabel: { fontSize: 12, color: '#7a8e9c', fontWeight: '700', marginRight: 4 },
   sortChip: {
     minHeight: 44,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
     backgroundColor: '#f0f4f7',
     justifyContent: 'center',
     alignItems: 'center'
   },
   sortChipActive: { backgroundColor: '#0f2f3d' },
-  sortChipText: { color: '#556b7a', fontSize: 12, fontWeight: '600' },
+  sortChipText: { color: '#556b7a', fontSize: 13, fontWeight: '600' },
   sortChipTextActive: { color: '#ffffff', fontWeight: '700' },
   productsHeader: { marginBottom: 6 }
 });
