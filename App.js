@@ -25,6 +25,36 @@ import PrivacyPolicyScreen from './src/screens/PrivacyPolicyScreen';
 
 const Stack = createNativeStackNavigator();
 
+const linking = {
+  prefixes: [
+    'https://gearspot.xyz',
+    'https://www.gearspot.xyz',
+    'https://ai-agent-dev-eight.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:19006'
+  ],
+  config: {
+    screens: {
+      Home: '',
+      ProductDetail: 'lauta/:productId',
+      ProviderDetail: 'tarjoaja/:providerId',
+      Booking: 'varaa/:productId',
+      Profile: 'profiili',
+      MapSearch: 'noutopiste/:initialQuery?',
+      BecomeHost: 'liity-isannaksi',
+      Auth: 'kirjaudu',
+      TermsOfService: 'kayttoehdot',
+      PrivacyPolicy: 'tietosuoja',
+      Chat: 'viestit',
+      AdminOps: 'yllapito',
+      TermsSafety: 'turvallisuusehdot',
+      FeedbackReports: 'palaute-raportit',
+      ReviewScreen: 'arvostelu',
+      RenterReview: 'vuokraajan-arvostelu'
+    }
+  }
+};
+
 export default function App() {
   const navigationRef = useRef(null);
   const [routeName, setRouteName] = useState('Home');
@@ -35,6 +65,7 @@ export default function App() {
         <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
           <NavigationContainer
             ref={navigationRef}
+            linking={linking}
             onReady={() => setRouteName(navigationRef.current?.getCurrentRoute()?.name || 'Home')}
             onStateChange={() => setRouteName(navigationRef.current?.getCurrentRoute()?.name || 'Home')}
           >

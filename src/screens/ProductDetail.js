@@ -1,20 +1,35 @@
-import React, { useState } from 'react';
-import { SafeAreaView, View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { SafeAreaView, View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, ActivityIndicator } from 'react-native';
 import Toast from '../components/Toast';
 import ScreenHeader from '../components/ScreenHeader';
-import { getFavorites, addFavorite, removeFavorite } from '../lib/api';
+import { getFavorites, addFavorite, removeFavorite, fetchJson } from '../lib/api';
 import Icon from 'react-native-vector-icons/Feather';
 
 export default function ProductDetail({ route, navigation }) {
-  const { product } = route.params || {};
+  const { product: initialProduct, productId } = route.params || {};
+  const [product, setProduct] = useState(initialProduct || null);
+  const [loadingProduct, setLoadingProduct] = useState(!initialProduct && Boolean(productId));
+
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
 
+  useEffect(() => {
+    if (!product && productId) {
+      setLoadingProduct(true);
+      fetchJson('/api/products')
+        .then((allProducts) => {
+          const found = allProducts.find(p => String(p.id) === String(productId));
+          if (found) setProduct(found);
+        })
+        .catch(() => {})
+        .finally(() => setLoadingProduct(false));
+    }
+  }, [productId, product]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     checkFavorite();
   }, [product]);
 
@@ -31,6 +46,7 @@ export default function ProductDetail({ route, navigation }) {
 
   const toggleFavorite = async () => {
     try {
+      if (!product) return;
       if (isFavorite) {
         await removeFavorite(product.id);
         setIsFavorite(false);
@@ -42,7 +58,6 @@ export default function ProductDetail({ route, navigation }) {
       }
       setToastVisible(true);
     } catch (e) {
-      // Alert.alert is not imported in this version, fallback to Toast
       setToastMessage('Kirjaudu sisään ensin');
       setToastVisible(true);
     }
@@ -59,126 +74,173 @@ export default function ProductDetail({ route, navigation }) {
     `Huomenna (${getDayStr(1)})`,
     `Ylihuomenna (${getDayStr(2)})`
   ];
-  const times = ['10:00 - 12:00', '12:00 - 14:00', '14:00 - 16:00', '16:00 - 18:00'];
+  const times = ['09:00 - 12:00', '12:00 - 15:00', '15:00 - 18:00', '18:00 - 21:00', 'Koko päivä'];
 
-  const handleAction = () => {
-    if (!selectedDate || !selectedTime) {
-      setToastMessage('Valitse päivämäärä ja kellonaika ensin.');
-      setToastVisible(true);
-      return;
-    }
-    // Suoraan varaukseen ilman väliklikkauksia, ehdot ja säännöt vahvistetaan siellä.
-    navigation.navigate('Booking', { product, selectedDate, selectedTime });
-  };
+  if (loadingProduct) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#15948b" />
+          <Text style={styles.loadingText}>Ladataan laudan tietoja...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
-  if (!product) return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.emptyContainer}>
-        <Text style={styles.emptyText}>Tuotetta ei löydy.</Text>
-      </View>
-      <Toast message={toastMessage} visible={toastVisible} onHide={() => setToastVisible(false)} />
-    </SafeAreaView>
-  );
+  if (!product) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <ScreenHeader title="Tuotetta ei löytynyt" onBack={() => navigation.goBack()} />
+        <View style={styles.notFoundContainer}>
+          <Text style={styles.notFoundText}>Haluamaasi lautaa ei löytynyt tai se on poistunut valikoimasta.</Text>
+          <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate('Home')}>
+            <Text style={styles.primaryButtonText}>Palaa etusivulle</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <ScreenHeader
-          title="Tuote"
-          subtitle={product.name}
-          actionLabel="Varaa"
-          onAction={handleAction}
+          title={product.name}
+          actionLabel={isFavorite ? '❤️ Suosikki' : '🤍 Lisää suosikkeihin'}
+          onAction={toggleFavorite}
+          onBack={() => navigation.goBack()}
         />
+
+        {Array.isArray(product.photos) && product.photos.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
+            {product.photos.map((photo, index) => (
+              <Image key={index} source={{ uri: photo }} style={styles.productPhoto} />
+            ))}
+          </ScrollView>
+        ) : null}
+
         <View style={styles.card}>
-          {Array.isArray(product.photos) && product.photos[0] ? (
-            <Image source={{ uri: product.photos[0] }} style={styles.heroImage} resizeMode="cover" />
-          ) : null}
           <View style={styles.titleRow}>
-            <Text style={styles.name}>{product.name}</Text>
-            <TouchableOpacity onPress={toggleFavorite}>
-              <Icon name="heart" size={28} color={isFavorite ? "#ff4757" : "#ccc"} style={isFavorite ? {backgroundColor: '#ff4757'} : {}} />
+            <Text style={styles.title}>{product.name}</Text>
+            <View style={styles.typeBadge}>
+              <Text style={styles.typeText}>{product.type ? product.type.replace('_', ' ') : 'SUP-lauta'}</Text>
+            </View>
+          </View>
+          <Text style={styles.provider}>Tarjoaja: {product.provider?.name || 'GearSpot Oulu'}</Text>
+
+          <View style={styles.metaRow}>
+            <Text style={styles.price}>{product.price}</Text>
+            <Text style={styles.rating}>★ {product.rating || 4.9} / 5</Text>
+          </View>
+
+          <Text style={styles.desc}>{product.description || product.short}</Text>
+
+          {product.locationName ? (
+            <View style={styles.locationContainer}>
+              <Text style={styles.locationTitle}>📍 Noutopiste Oulussa:</Text>
+              <Text style={styles.locationValue}>{product.locationName}</Text>
+            </View>
+          ) : null}
+
+          {product.provider ? (
+            <TouchableOpacity
+              style={styles.providerCard}
+              onPress={() => navigation.navigate('ProviderDetail', { provider: product.provider })}
+            >
+              <Text style={styles.providerCardTitle}>Tietoa vuokraajasta:</Text>
+              <Text style={styles.providerCardName}>{product.provider.name}</Text>
+              <Text style={styles.providerCardRating}>★ {product.provider.rating} / 5</Text>
+              <Text style={styles.providerCardLink}>Katso vuokraajan kaikki kohteet →</Text>
             </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {/* CALENDAR & TIME SELECTOR */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>📅 1. Valitse noutopäivämäärä</Text>
+          <View style={styles.optionsRow}>
+            {dates.map((d) => (
+              <TouchableOpacity
+                key={d}
+                style={[styles.optionChip, selectedDate === d && styles.optionChipSelected]}
+                onPress={() => setSelectedDate(d)}
+              >
+                <Text style={[styles.optionText, selectedDate === d && styles.optionTextSelected]}>{d}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
-          <Text style={styles.type}>{product.type?.replace('_', ' ') || 'Varuste'}</Text>
-          <Text style={styles.price}>{product.price}</Text>
-          <Text style={styles.rating}>{product.rating ? `${product.rating}/5` : 'Ei arvosteluja vielä'}</Text>
-          <Text style={styles.short}>{product.short}</Text>
-          {product.locationName ? <Text style={styles.provider}>Sijainti: {product.locationName}</Text> : null}
-          <Text style={styles.provider}>Tarjoaja: {product.provider?.name || 'Gearspot'}</Text>
 
-          <View style={styles.calendarContainer}>
-            <Text style={styles.sectionTitle}>Valitse päivämäärä</Text>
-            <View style={styles.dateRow}>
-              {dates.map((date) => (
-                <TouchableOpacity
-                  key={date}
-                  style={[styles.dateButton, selectedDate === date && styles.dateButtonActive]}
-                  onPress={() => setSelectedDate(date)}
-                >
-                  <Text style={[styles.dateText, selectedDate === date && styles.dateTextActive]}>{date}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.sectionTitle}>Valitse kellonaika</Text>
-            <View style={styles.timeRow}>
-              {times.map((time) => (
-                <TouchableOpacity
-                  key={time}
-                  style={[styles.timeButton, selectedTime === time && styles.timeButtonActive]}
-                  onPress={() => setSelectedTime(time)}
-                >
-                  <Text style={[styles.timeText, selectedTime === time && styles.timeTextActive]}>{time}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+          <Text style={[styles.cardTitle, { marginTop: 16 }]}>⏰ 2. Valitse aikaikkuna</Text>
+          <View style={styles.optionsRow}>
+            {times.map((t) => (
+              <TouchableOpacity
+                key={t}
+                style={[styles.optionChip, selectedTime === t && styles.optionChipSelected]}
+                onPress={() => setSelectedTime(t)}
+              >
+                <Text style={[styles.optionText, selectedTime === t && styles.optionTextSelected]}>{t}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
-        <View style={styles.buttonGroup}>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => { setToastMessage('Linkki kopioitu leikepöydälle!'); setToastVisible(true); }}>
-            <Text style={styles.secondaryButtonText}>Jaa ilmoitus</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('ReviewScreen', { targetType: 'product', targetId: product.id, targetName: product.name })}>
-            <Text style={styles.secondaryButtonText}>Arvostelut</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.tertiaryButton} onPress={() => navigation.navigate('ProviderDetail', { providerId: product.providerId })}>
-            <Text style={styles.tertiaryButtonText}>Katso tarjoaja</Text>
-          </TouchableOpacity>
-        </View>
+
+        {/* CONTINUE TO BOOKING */}
+        <TouchableOpacity
+          style={[styles.primaryButton, (!selectedDate || !selectedTime) && styles.buttonDisabled]}
+          disabled={!selectedDate || !selectedTime}
+          onPress={() =>
+            navigation.navigate('Booking', {
+              product,
+              selectedDate,
+              selectedTime
+            })
+          }
+        >
+          <Text style={styles.primaryButtonText}>
+            {!selectedDate || !selectedTime ? 'Valitse päivä ja aika jatkaaksesi' : 'Jatka varaukseen & lisävarusteisiin →'}
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
+
+      <Toast message={toastMessage} visible={toastVisible} onDismiss={() => setToastVisible(false)} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f4f8fb' },
-  container: { padding: 16, paddingBottom: 40 },
-  card: { backgroundColor: '#fff', borderRadius: 18, padding: 20, borderWidth: 1, borderColor: '#e3eaef' },
-  heroImage: { width: '100%', height: 180, borderRadius: 12, marginBottom: 12, backgroundColor: '#e8eef2' },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  name: { fontSize: 22, fontWeight: '800', color: '#0f2f3d', flex: 1 },
-  type: { fontSize: 14, color: '#15948b', fontWeight: '700', marginBottom: 10, textTransform: 'capitalize' },
-  price: { fontSize: 18, fontWeight: '700', marginBottom: 6, color: '#1f3d55' },
-  rating: { fontSize: 14, color: '#15948b', marginBottom: 12, fontWeight: '700' },
-  short: { fontSize: 15, color: '#556b7a', lineHeight: 22, marginBottom: 12 },
-  provider: { fontSize: 14, color: '#556b7a', marginBottom: 4 },
-  calendarContainer: { marginTop: 24, paddingTop: 16, borderTopWidth: 1, borderColor: '#e3eaef' },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#0f2f3d', marginBottom: 12 },
-  dateRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16 },
-  dateButton: { borderWidth: 1, borderColor: '#d5dde3', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, marginRight: 8, marginBottom: 8, backgroundColor: '#f7fbfc' },
-  dateButtonActive: { borderColor: '#15948b', backgroundColor: '#e9f8f6' },
-  dateText: { color: '#385160', fontWeight: '600' },
-  dateTextActive: { color: '#15948b' },
-  timeRow: { flexDirection: 'row', flexWrap: 'wrap' },
-  timeButton: { borderWidth: 1, borderColor: '#d5dde3', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, marginRight: 8, marginBottom: 8, backgroundColor: '#f7fbfc' },
-  timeButtonActive: { borderColor: '#15948b', backgroundColor: '#e9f8f6' },
-  timeText: { color: '#385160', fontWeight: '600' },
-  timeTextActive: { color: '#15948b' },
-  buttonGroup: { marginTop: 20 },
-  secondaryButton: { backgroundColor: '#eef7f5', borderRadius: 16, paddingVertical: 16, alignItems: 'center', marginBottom: 12 },
-  secondaryButtonText: { color: '#15948b', fontWeight: '700' },
-  tertiaryButton: { backgroundColor: '#fff', borderRadius: 16, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: '#d7dfe6' },
-  tertiaryButtonText: { color: '#0f2f3d', fontWeight: '700' },
-  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 16 },
-  emptyText: { color: '#556b7a', fontSize: 16 }
+  safe: { flex: 1, backgroundColor: '#f0f4f7' },
+  container: { padding: 16, paddingBottom: 50 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
+  loadingText: { marginTop: 14, color: '#556b7a', fontSize: 14, fontWeight: '600' },
+  notFoundContainer: { padding: 30, alignItems: 'center' },
+  notFoundText: { color: '#4a6070', fontSize: 14, marginBottom: 20, textAlign: 'center' },
+  photoScroll: { marginBottom: 16 },
+  productPhoto: { width: 280, height: 180, borderRadius: 16, marginRight: 12 },
+  card: { backgroundColor: '#ffffff', borderRadius: 18, padding: 18, marginBottom: 14, borderWidth: 1, borderColor: '#e2ebf0' },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
+  title: { fontSize: 20, fontWeight: '800', color: '#0f2f3d', flex: 1, marginRight: 8 },
+  typeBadge: { backgroundColor: '#e6f7f5', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#15948b' },
+  typeText: { fontSize: 11, color: '#0e6962', fontWeight: '800', textTransform: 'uppercase' },
+  provider: { fontSize: 12, color: '#556b7a', marginBottom: 12 },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f0f5f8' },
+  price: { fontSize: 20, fontWeight: '900', color: '#15948b' },
+  rating: { fontSize: 14, fontWeight: '800', color: '#d97706' },
+  desc: { color: '#4a6070', fontSize: 14, lineHeight: 21, marginBottom: 14 },
+  locationContainer: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 12, marginBottom: 14, borderWidth: 1, borderColor: '#e2ebf0' },
+  locationTitle: { fontSize: 12, fontWeight: '800', color: '#0f2f3d', marginBottom: 4 },
+  locationValue: { fontSize: 13, color: '#4a6070', fontWeight: '600' },
+  providerCard: { backgroundColor: '#f0f7fa', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#cbe0eb' },
+  providerCardTitle: { fontSize: 11, fontWeight: '800', color: '#556b7a', uppercase: true, marginBottom: 4 },
+  providerCardName: { fontSize: 15, fontWeight: '800', color: '#0f2f3d' },
+  providerCardRating: { fontSize: 12, fontWeight: '700', color: '#d97706', marginBottom: 6 },
+  providerCardLink: { fontSize: 12, color: '#15948b', fontWeight: '800' },
+  cardTitle: { fontSize: 15, fontWeight: '800', color: '#0f2f3d', marginBottom: 10 },
+  optionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  optionChip: { backgroundColor: '#f0f4f7', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: '#d2dfa6' },
+  optionChipSelected: { backgroundColor: '#15948b', borderColor: '#15948b' },
+  optionText: { color: '#4a6070', fontSize: 13, fontWeight: '700' },
+  optionTextSelected: { color: '#ffffff', fontWeight: '800' },
+  primaryButton: { backgroundColor: '#15948b', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 8 },
+  buttonDisabled: { opacity: 0.5 },
+  primaryButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '800' }
 });
