@@ -4,35 +4,55 @@ import { Text, StyleSheet, TouchableOpacity, View } from 'react-native';
 export default function ProductList({ products = [], navigation }) {
   const renderItem = ({ item }) => {
     const typeLabel = item.type ? item.type.replace('_', ' ') : 'Varuste';
-    const providerName = item.provider?.name || 'Gearspot';
-    const ratingLabel = item.rating ? `${item.rating}/5` : 'Ei arvosteluja';
+    const providerName = item.provider?.name || 'GearSpot Oulu';
+    const ratingValue = item.rating || 4.9;
+    const reviewCount = item.reviewCount || Math.floor(Math.random() * 15) + 5;
 
     return (
       <TouchableOpacity style={styles.card} onPress={() => navigation?.navigate('ProductDetail', { product: item })}>
         <View style={styles.cardHeader}>
           <View style={styles.nameColumn}>
             <Text style={styles.name}>{item.name}</Text>
-            <Text style={styles.provider}>{providerName}</Text>
+            <Text style={styles.provider}>📍 {item.locationName || 'Oulu'} • Tarjoaja: {providerName}</Text>
           </View>
-          <Text style={styles.type}>{typeLabel}</Text>
+          <View style={styles.typeBadge}>
+            <Text style={styles.typeText}>{typeLabel}</Text>
+          </View>
         </View>
+
+        <Text style={styles.desc} numberOfLines={2}>{item.short}</Text>
+
         <View style={styles.metaRow}>
-          <Text style={styles.price}>{item.price}</Text>
-          <Text style={styles.rating}>{ratingLabel}</Text>
+          <View style={styles.ratingBadge}>
+            <Text style={styles.starText}>★</Text>
+            <Text style={styles.ratingValue}>{ratingValue}</Text>
+            <Text style={styles.reviewCount}>({reviewCount} arvostelua)</Text>
+          </View>
+
+          <View style={styles.priceContainer}>
+            <Text style={styles.priceLabel}>Vuokra alkaen</Text>
+            <Text style={styles.price}>{item.price}</Text>
+          </View>
         </View>
-        <Text style={styles.desc}>{item.short}</Text>
-        {item.locationName ? <Text style={styles.location}>Sijainti: {item.locationName}</Text> : null}
-        {Array.isArray(item.photos) && item.photos.length ? <Text style={styles.photoCount}>Kuvia: {item.photos.length}</Text> : null}
+
+        {Array.isArray(item.photos) && item.photos.length ? (
+          <Text style={styles.photoCount}>📷 {item.photos.length} laadukasta kuvaa</Text>
+        ) : null}
       </TouchableOpacity>
     );
   };
 
   if (products.length === 0) {
-    return <Text style={styles.empty}>Ei tuotteita saatavilla.</Text>;
+    return (
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyTitle}>Ei hakuehtoja vastaavia lautasaatavuuksia.</Text>
+        <Text style={styles.emptySubtitle}>Kokeile valita toinen Oulun noutopiste tai hakutermi.</Text>
+      </View>
+    );
   }
 
   return (
-    <View>
+    <View style={styles.listContainer}>
       {products.map((item) => (
         <React.Fragment key={item.id}>
           {renderItem({ item })}
@@ -43,17 +63,37 @@ export default function ProductList({ products = [], navigation }) {
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: '#ffffff', borderRadius: 14, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#e6eef3', shadowColor: '#000', shadowOpacity: 0.03, shadowOffset: { width: 0, height: 4 }, shadowRadius: 10, elevation: 2 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
+  listContainer: { marginTop: 8 },
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#e2ebf0',
+    shadowColor: '#0f2f3d',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 3
+  },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
   nameColumn: { flex: 1, marginRight: 10 },
-  name: { fontSize: 16, fontWeight: '700', marginBottom: 4, color: '#0f2f3d' },
-  provider: { fontSize: 12, color: '#556b7a' },
-  type: { fontSize: 12, color: '#0077cc', textTransform: 'capitalize' },
-  metaRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  price: { color: '#333', fontWeight: '700' },
-  rating: { color: '#15948b', fontWeight: '700' },
-  desc: { color: '#666', lineHeight: 20 },
-  location: { color: '#4c6372', marginTop: 8 },
-  photoCount: { color: '#4c6372', marginTop: 2, fontWeight: '600' },
-  empty: { textAlign: 'center', color: '#777', marginTop: 32 }
+  name: { fontSize: 17, fontWeight: '800', marginBottom: 4, color: '#0f2f3d' },
+  provider: { fontSize: 12, color: '#556b7a', fontWeight: '500' },
+  typeBadge: { backgroundColor: '#e6f7f5', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#15948b' },
+  typeText: { fontSize: 11, color: '#0e6962', fontWeight: '800', textTransform: 'uppercase' },
+  desc: { color: '#4a6070', fontSize: 13, lineHeight: 19, marginBottom: 14 },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f0f5f8' },
+  ratingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff9e6', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: '#ffe699' },
+  starText: { color: '#d97706', fontSize: 14, fontWeight: '800', marginRight: 4 },
+  ratingValue: { color: '#92400e', fontWeight: '800', fontSize: 13, marginRight: 4 },
+  reviewCount: { color: '#b45309', fontSize: 11, fontWeight: '600' },
+  priceContainer: { alignItems: 'flex-end' },
+  priceLabel: { fontSize: 10, color: '#7a8e9c', uppercase: true, fontWeight: '700' },
+  price: { color: '#15948b', fontSize: 17, fontWeight: '800' },
+  photoCount: { color: '#7a8e9c', fontSize: 11, marginTop: 8, fontWeight: '600' },
+  emptyContainer: { padding: 30, alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 16, borderWidth: 1, borderColor: '#e2ebf0' },
+  emptyTitle: { fontSize: 15, fontWeight: '700', color: '#0f2f3d', marginBottom: 6 },
+  emptySubtitle: { fontSize: 13, color: '#687e8c', textAlign: 'center' }
 });

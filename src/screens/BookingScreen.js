@@ -6,10 +6,18 @@ import { useToast } from '../contexts/ToastContext';
 import WeatherWarning from '../components/WeatherWarning';
 import { useStripe } from '@stripe/stripe-react-native';
 
+const ADD_ON_OPTIONS = [
+  { id: 'vest', name: '🦺 Pelastusliivit (koko S/M/L/XL)', price: 5 },
+  { id: 'drybag', name: '💼 Vedenpitävä kuivasäkki puhelimelle & avaimille', price: 3 },
+  { id: 'coaching', name: '🏄 Aloittelijan pikaohjaus / tekniikkaperehdytys', price: 15 },
+  { id: 'delivery', name: '🚗 Kuljetus suoraan rannalle (Nallikari/Tuira/Hietasaari)', price: 10 }
+];
+
 export default function BookingScreen({ route, navigation }) {
   const { product, selectedDate, selectedTime } = route.params || {};
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [selectedAddOns, setSelectedAddOns] = useState([]);
   const { showToast } = useToast();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [termsAccepted, setTermsAccepted] = useState(Boolean(route?.params?.termsAccepted));
@@ -22,6 +30,21 @@ export default function BookingScreen({ route, navigation }) {
       .catch(() => setEmail(''));
   }, []);
 
+  const basePriceNum = parseInt((product?.price || '').replace(/[^0-9]/g, '')) || 25;
+  const addOnsTotal = selectedAddOns.reduce((sum, addOnId) => {
+    const item = ADD_ON_OPTIONS.find(a => a.id === addOnId);
+    return sum + (item ? item.price : 0);
+  }, 0);
+  const totalPriceNum = basePriceNum + addOnsTotal;
+
+  const toggleAddOn = (id) => {
+    if (selectedAddOns.includes(id)) {
+      setSelectedAddOns(selectedAddOns.filter(a => a !== id));
+    } else {
+      setSelectedAddOns([...selectedAddOns, id]);
+    }
+  };
+
   const submit = async () => {
     if (!name) return showToast('Täytä nimi');
     if (!email) return showToast('Kirjaudu ensin sisään', 'Tarvitsemme vahvistetun sähköpostin varaukselle.');
@@ -30,6 +53,8 @@ export default function BookingScreen({ route, navigation }) {
 
     try {
       setLoading(true);
+      const chosenAddOnsLabels = selectedAddOns.map(id => ADD_ON_OPTIONS.find(a => a.id === id)?.name).filter(Boolean);
+
       const booking = await fetchJson('/api/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -40,18 +65,20 @@ export default function BookingScreen({ route, navigation }) {
           termsAccepted,
           safetyChecklistAccepted: safetyAccepted,
           selectedDate,
-          selectedTime
+          selectedTime,
+          addOns: chosenAddOnsLabels,
+          totalPrice: `${totalPriceNum} €`
         })
       });
 
       if (!booking.clientSecret) {
-         showToast('Maksu onnistui', `Varaus vahvistettu. Maksun tila: ${booking.paymentStatus}.`);
+         showToast('Varaus vahvistettu!', `Varaus lautaan ${product.name} vahvistettu. Loppusumma: ${totalPriceNum} €.`);
          navigation.navigate('Profile');
          return;
       }
 
       const { error: initError } = await initPaymentSheet({
-        merchantDisplayName: 'GearSpot',
+        merchantDisplayName: 'GearSpot Oulu',
         paymentIntentClientSecret: booking.clientSecret,
         allowsDelayedPaymentMethods: true,
         defaultBillingDetails: {
@@ -65,109 +92,209 @@ export default function BookingScreen({ route, navigation }) {
         return;
       }
 
-      const { error: paymentError } = await presentPaymentSheet();
+      const { error: presentError } = await presentPaymentSheet();
 
-      if (paymentError) {
-         // Ystävällisempi virheilmoitus maksuvirheille UX:n parantamiseksi
-         if (paymentError.code === 'Canceled') {
-             showToast('Maksu keskeytettiin', 'Voit yrittää maksua uudelleen, kun olet valmis.');
-         } else {
-             showToast('Maksu epäonnistui', `Tarkista kortin tiedot. (${paymentError.message})`);
-         }
+      if (presentError) {
+        if (presentError.code === 'Canceled') {
+          showToast('Maksu peruutettu', 'Voit yrittää maksua uudelleen.');
+        } else {
+          showToast('Maksuepäonnistui', presentError.message);
+        }
       } else {
-         showToast('Maksu onnistui!', 'Varaus vahvistettu.');
-         navigation.navigate('Profile');
+        showToast('Maksu onnistui!', `Varaus vahvistettu lautaan ${product.name}. Kuitti lähetetty sähköpostiin.`);
+        navigation.navigate('Profile');
       }
 
-    } catch (error) {
-      if (error.message === 'Unauthorized') {
-        return showToast('Kirjaudu ensin sisään', 'Varausten tekeminen vaatii kirjautumisen.');
-      }
-      showToast('Varauksen luonti epäonnistui', error.message);
+    } catch (e) {
+      showToast('Maksun alustus epäonnistui', e.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.wrapper}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <ScreenHeader title="Varaus" subtitle={product?.name || 'Valitse tuote'} />
+    <SafeAreaView style={styles.safe}>
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <ScreenHeader
+          title="Varaa ja maksa"
+          subtitle={product?.name || 'SUP-lauta'}
+          onBack={() => navigation.goBack()}
+        />
+
+        <WeatherWarning location={product?.locationName || 'Oulu'} />
+
+        {/* PRICE SUMMARY CARD */}
         <View style={styles.card}>
-          <Text style={styles.title}>Varaa</Text>
-          <Text style={styles.productName}>{product?.name}</Text>
-          {selectedDate && selectedTime ? (
-            <View>
-              <Text style={styles.selectedTimeText}>
-                Aika: {selectedDate} klo {selectedTime}
-              </Text>
-              {/* Dynamic pricing hint for the frontend: highlight weekend pricing */}
-              {new Date(selectedDate).getDay() === 0 || new Date(selectedDate).getDay() === 6 ? <Text style={{color: '#b33b23', fontWeight: 'bold', marginBottom: 16, marginTop: -10}}>Viikonloppuhinnoittelu voimassa (+50%) - Yhteensä: {product.pricePerHour ? Math.round(product.pricePerHour * 1.5) : 22} €</Text> : <Text style={{color: '#15948b', fontWeight: 'bold', marginBottom: 16, marginTop: -10}}>Normaalihinnoittelu - Yhteensä: {product.pricePerHour || 15} €</Text>}
+          <Text style={styles.cardTitle}>📍 Varauksen yhteenveto</Text>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Tuote:</Text>
+            <Text style={styles.summaryValue}>{product?.name}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Noutopiste:</Text>
+            <Text style={styles.summaryValue}>{product?.locationName || 'Oulu'}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Ajankohta:</Text>
+            <Text style={styles.summaryValue}>{selectedDate || 'Tänään'} klo {selectedTime || '12:00'}</Text>
+          </View>
+          <View style={[styles.summaryRow, styles.summaryRowBorder]}>
+            <Text style={styles.summaryLabel}>Laudan vuokrahinta:</Text>
+            <Text style={styles.summaryValue}>{basePriceNum} €</Text>
+          </View>
+        </View>
+
+        {/* 🏄 3. ADD-ON EQUIPMENT UPSELL CHECKLIST */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>🏄 Lisävarusteet &amp; Palvelut (Valinnainen)</Text>
+          <Text style={styles.cardSubtitle}>Ruksi mukaan haluamasi lisätarvikkeet vuokraukseen:</Text>
+
+          {ADD_ON_OPTIONS.map(addOn => {
+            const isSelected = selectedAddOns.includes(addOn.id);
+            return (
+              <TouchableOpacity
+                key={addOn.id}
+                style={[styles.addOnBox, isSelected && styles.addOnBoxSelected]}
+                onPress={() => toggleAddOn(addOn.id)}
+              >
+                <View style={styles.addOnLeft}>
+                  <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                    {isSelected ? <Text style={styles.checkmark}>✓</Text> : null}
+                  </View>
+                  <Text style={[styles.addOnText, isSelected && styles.addOnTextSelected]}>
+                    {addOn.name}
+                  </Text>
+                </View>
+                <Text style={[styles.addOnPrice, isSelected && styles.addOnPriceSelected]}>
+                  +{addOn.price} €
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+
+          <View style={styles.totalPriceBox}>
+            <Text style={styles.totalPriceLabel}>YHTEENSÄ MAKSETTAVA:</Text>
+            <Text style={styles.totalPriceValue}>{totalPriceNum} €</Text>
+          </View>
+        </View>
+
+        {/* CONTACT INFO */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>👤 Varaajan tiedot</Text>
+
+          <Text style={styles.fieldLabel}>Koko nimi *</Text>
+          <TextInput
+            placeholder="Matti Meikäläinen"
+            value={name}
+            onChangeText={setName}
+            style={styles.input}
+          />
+
+          <Text style={styles.fieldLabel}>Sähköposti (vahvistukselle) *</Text>
+          <TextInput
+            placeholder="matti@example.com"
+            value={email}
+            onChangeText={setEmail}
+            style={styles.input}
+            keyboardType="email-address"
+          />
+        </View>
+
+        {/* TERMS & SAFETY CHECKLIST */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>🛡️ Turvallisuus &amp; Ehdot</Text>
+
+          <TouchableOpacity
+            style={styles.checkboxRow}
+            onPress={() => setTermsAccepted(!termsAccepted)}
+          >
+            <View style={[styles.checkbox, termsAccepted && styles.checkboxSelected]}>
+              {termsAccepted ? <Text style={styles.checkmark}>✓</Text> : null}
             </View>
-          ) : null}
-          <Text style={styles.info}>Turvallinen maksaminen Stripe-palvelun kautta.</Text>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>Varaus etenee nyt 3 vaiheessa</Text>
-            <Text style={styles.summaryItem}>1. Tayta yhteystiedot</Text>
-            <Text style={styles.summaryItem}>2. Syötä maksutiedot Stripen turvallisessa ikkunassa</Text>
-            <Text style={styles.summaryItem}>3. Tarkista vahvistus Profiilista ja testaa palautus</Text>
-          </View>
-          <WeatherWarning date={selectedDate} />
-          <Text style={styles.label}>Nimi</Text>
-          <TextInput placeholder="Nimi" value={name} onChangeText={setName} style={styles.input} autoCapitalize="words" />
-          <Text style={styles.label}>Sähköposti</Text>
-          <TextInput placeholder="Kirjaudu nähdäksesi sähköpostin" value={email} style={styles.input} editable={false} />
+            <Text style={styles.checkboxLabel}>
+              Hyväksyn GearSpot-vuokrausehdot ja peruutussäännöt.
+            </Text>
+          </TouchableOpacity>
 
-          <View style={styles.consentCard}>
-            <Text style={styles.summaryTitle}>Turvallisuus ja ehdot</Text>
-            <TouchableOpacity style={styles.checkRow} onPress={() => setTermsAccepted((value) => !value)}>
-              <Text style={[styles.checkBox, termsAccepted && styles.checkBoxActive]}>{termsAccepted ? '✓' : ' '}</Text>
-              <Text style={styles.checkLabel}>Hyväksyn vuokrausehdot ja vastuun käytöstä.</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.checkRow} onPress={() => setSafetyAccepted((value) => !value)}>
-              <Text style={[styles.checkBox, safetyAccepted && styles.checkBoxActive]}>{safetyAccepted ? '✓' : ' '}</Text>
-              <Text style={styles.checkLabel}>Vahvistan SUP-turvallisuuslistan: liivit, sää, päiväsaika, alue.</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity style={[styles.submitButton, loading && {opacity: 0.7}]} onPress={submit} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Maksa ja vahvista varaus</Text>}
+          <TouchableOpacity
+            style={styles.checkboxRow}
+            onPress={() => setSafetyAccepted(!safetyAccepted)}
+          >
+            <View style={[styles.checkbox, safetyAccepted && styles.checkboxSelected]}>
+              {safetyAccepted ? <Text style={styles.checkmark}>✓</Text> : null}
+            </View>
+            <Text style={styles.checkboxLabel}>
+              Vahvistan osaavani uida ja noudattavani vesiturvallisuusohjeita Oulun vesialueilla.
+            </Text>
           </TouchableOpacity>
         </View>
+
+        {/* SUBMIT BUTTON */}
+        <TouchableOpacity
+          style={[styles.primaryButton, loading && styles.buttonDisabled]}
+          onPress={submit}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.primaryButtonText}>
+              Vahvista ja maksa varaus ({totalPriceNum} €) →
+            </Text>
+          )}
+        </TouchableOpacity>
+
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  wrapper: { flex: 1, backgroundColor: '#f4f8fb' },
-  container: { padding: 16 },
-  card: { backgroundColor: '#fff', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#e3eaef', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 14, elevation: 4 },
-  title: { fontSize: 20, fontWeight: '700', marginBottom: 8 },
-  productName: { fontSize: 16, color: '#4a5568', marginBottom: 8 },
-  selectedTimeText: { fontSize: 15, color: '#15948b', fontWeight: '600', marginBottom: 16 },
-  info: { color: '#556b7a', lineHeight: 21, marginBottom: 4 },
-  summaryCard: { backgroundColor: '#eef7f5', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#d4ebe7', marginTop: 12 },
-  summaryTitle: { color: '#0f2f3d', fontWeight: '800', marginBottom: 8 },
-  summaryItem: { color: '#385160', lineHeight: 20, marginBottom: 2 },
-  consentCard: { backgroundColor: '#f8fbfd', borderRadius: 12, borderWidth: 1, borderColor: '#d7e2ea', padding: 12, marginTop: 14 },
-  checkRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-  checkBox: {
-    width: 22,
-    height: 22,
+  safe: { flex: 1, backgroundColor: '#f0f4f7' },
+  container: { padding: 16, paddingBottom: 50 },
+  card: { backgroundColor: '#ffffff', borderRadius: 18, padding: 18, marginBottom: 14, borderWidth: 1, borderColor: '#e2ebf0' },
+  cardTitle: { fontSize: 16, fontWeight: '800', color: '#0f2f3d', marginBottom: 6 },
+  cardSubtitle: { fontSize: 12, color: '#687e8c', marginBottom: 14 },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  summaryRowBorder: { borderTopWidth: 1, borderTopColor: '#f0f5f8', paddingTop: 8, marginTop: 4 },
+  summaryLabel: { fontSize: 13, color: '#687e8c' },
+  summaryValue: { fontSize: 13, fontWeight: '700', color: '#0f2f3d' },
+  addOnBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justify: 'space-between',
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#b8c8d3',
-    borderRadius: 6,
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    marginRight: 10,
-    color: '#fff',
-    backgroundColor: '#fff'
+    borderColor: '#e2ebf0'
   },
-  checkBoxActive: { backgroundColor: '#15948b', borderColor: '#15948b' },
-  checkLabel: { flex: 1, color: '#385160', lineHeight: 20 },
-  label: { color: '#556b7a', marginBottom: 6, marginTop: 12 },
-  input: { borderWidth: 1, borderColor: '#d5dde3', borderRadius: 12, padding: 12, backgroundColor: '#f7fbfc' },
-  submitButton: { marginTop: 20, backgroundColor: '#15948b', paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
-  submitText: { color: '#fff', fontWeight: '700' }
+  addOnBoxSelected: { backgroundColor: '#e6f7f5', borderColor: '#15948b' },
+  addOnLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 },
+  addOnText: { fontSize: 12, color: '#4a6070', fontWeight: '600', flex: 1 },
+  addOnTextSelected: { color: '#0f2f3d', fontWeight: '800' },
+  addOnPrice: { fontSize: 13, fontWeight: '700', color: '#687e8c' },
+  addOnPriceSelected: { color: '#15948b', fontWeight: '800' },
+  totalPriceBox: {
+    flexDirection: 'row',
+    justify: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 2,
+    borderTopColor: '#15948b'
+  },
+  totalPriceLabel: { fontSize: 12, fontWeight: '800', color: '#0f2f3d', letterSpacing: 0.5 },
+  totalPriceValue: { fontSize: 22, fontWeight: '900', color: '#15948b' },
+  fieldLabel: { fontSize: 12, fontWeight: '700', color: '#0f2f3d', marginBottom: 4, marginTop: 8 },
+  input: { borderWidth: 1, borderColor: '#d5dde3', borderRadius: 12, padding: 12, backgroundColor: '#f8fafc', color: '#0f2f3d' },
+  checkboxRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+  checkbox: { width: 22, height: 22, borderWidth: 2, borderColor: '#15948b', borderRadius: 6, justifyContent: 'center', alignItems: 'center', marginRight: 10, backgroundColor: '#fff' },
+  checkboxSelected: { backgroundColor: '#15948b' },
+  checkmark: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  checkboxLabel: { fontSize: 12, color: '#4a6070', flex: 1, lineHeight: 17 },
+  primaryButton: { backgroundColor: '#15948b', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 8 },
+  buttonDisabled: { opacity: 0.6 },
+  primaryButtonText: { color: '#ffffff', fontSize: 16, fontWeight: '800' }
 });
