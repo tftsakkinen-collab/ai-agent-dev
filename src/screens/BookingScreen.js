@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SafeAreaView, View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
 import { fetchJson, getProfile } from '../lib/api';
@@ -7,6 +7,7 @@ import WeatherWarning from '../components/WeatherWarning';
 import { useStripe } from '@stripe/stripe-react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { useLanguage } from '../contexts/LanguageContext';
+import { calculateRentalPrice } from '../lib/priceCalculator';
 
 const ADD_ON_OPTIONS = [
   { id: 'vest', name: 'Pelastusliivit (koko S/M/L/XL)', price: 5 },
@@ -52,10 +53,15 @@ const PAYMENT_METHODS = [
 
 export default function BookingScreen({ route, navigation }) {
   const { lang, t } = useLanguage();
-  const { product, selectedDate, selectedTime } = route.params || {};
+  const { product: initialProduct, productId: paramProductId, id: routeId, selectedDate, selectedTime } = route.params || {};
+  const targetId = paramProductId || routeId || (initialProduct ? initialProduct.id : null);
+
+  const [product, setProduct] = useState(initialProduct || null);
+  const [loadingProduct, setLoadingProduct] = useState(!initialProduct && Boolean(targetId));
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [currentLocation, setCurrentLocation] = useState(product?.locationName || 'Nallikari Beach, Oulu');
+  const [currentLocation, setCurrentLocation] = useState('Nallikari Beach, Oulu');
   const [selectedAddOns, setSelectedAddOns] = useState([]);
   const [paymentMethod, setPaymentMethod] = useState('stripe');
   const [edenredCode, setEdenredCode] = useState('');
@@ -65,18 +71,46 @@ export default function BookingScreen({ route, navigation }) {
   const [safetyAccepted, setSafetyAccepted] = useState(Boolean(route?.params?.safetyAccepted));
   const [loading, setLoading] = useState(false);
 
-  React.useEffect(() => {
+  // 2. INDEPENDENT PRODUCT FETCHING ON DIRECT URL VISIT / REFRESH (/varaa/sup-1)
+  useEffect(() => {
+    if (targetId) {
+      setLoadingProduct(!product);
+      fetchJson('/api/products')
+        .then((allProducts) => {
+          const found = allProducts.find(p => String(p.id).toLowerCase() === String(targetId).toLowerCase());
+          if (found) {
+            setProduct(found);
+            if (found.locationName) setCurrentLocation(found.locationName);
+          }
+        })
+        .catch((err) => {
+          console.error('[BookingScreen] Error fetching product:', err);
+        })
+        .finally(() => {
+          setLoadingProduct(false);
+        });
+    }
+  }, [targetId]);
+
+  useEffect(() => {
     getProfile()
       .then((profile) => setEmail(profile.email || ''))
       .catch(() => setEmail(''));
   }, []);
 
-  const basePriceNum = parseInt((product?.price || '').replace(/[^0-9]/g, '')) || 25;
-  const addOnsTotal = selectedAddOns.reduce((sum, addOnId) => {
-    const item = ADD_ON_OPTIONS.find(a => a.id === addOnId);
-    return sum + (item ? item.price : 0);
-  }, 0);
-  const totalPriceNum = basePriceNum + addOnsTotal;
+  useEffect(() => {
+    if (product?.locationName) {
+      setCurrentLocation(product.locationName);
+    }
+  }, [product]);
+
+  // 1. ACCURATE PRICE CALCULATION LOGIC
+  const selectedAddOnPrices = selectedAddOns.map(id => ADD_ON_OPTIONS.find(a => a.id === id)?.price).filter(Boolean);
+  const priceDetails = calculateRentalPrice(product?.price || '15 € / h (tai 60 € / pvä)', selectedTime || '09:00 - 12:00', selectedAddOnPrices);
+
+  const basePriceNum = priceDetails.baseRentalPrice;
+  const addOnsTotal = priceDetails.addOnsTotal;
+  const totalPriceNum = priceDetails.totalPrice;
 
   const toggleAddOn = (id) => {
     if (selectedAddOns.includes(id)) {
@@ -95,7 +129,7 @@ export default function BookingScreen({ route, navigation }) {
       setLoading(true);
       const chosenAddOnsLabels = selectedAddOns.map(id => ADD_ON_OPTIONS.find(a => a.id === id)?.name).filter(Boolean);
 
-      // EPASSI / SMARTUM / EDENRED BENEFIT VOUCHER HANDLING
+      // BENEFIT VOUCHER HANDLING
       if (paymentMethod !== 'stripe') {
         await fetchJson('/api/bookings', {
           method: 'POST',
@@ -184,6 +218,31 @@ export default function BookingScreen({ route, navigation }) {
     }
   };
 
+  if (loadingProduct) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#15948b" />
+          <Text style={styles.loadingText}>Ladataan varauksen tietoja...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!product) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <ScreenHeader title="Tuotetta ei löytynyt" onBack={() => navigation.goBack()} />
+        <View style={styles.notFoundContainer}>
+          <Text style={styles.notFoundText}>Haluamaasi lautaa ({targetId || 'undefined'}) ei löytynyt valikoimasta.</Text>
+          <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate('Home')}>
+            <Text style={styles.primaryButtonText}>Palaa etusivulle</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
@@ -193,13 +252,13 @@ export default function BookingScreen({ route, navigation }) {
           onBack={() => navigation.goBack()}
         />
 
-        {/* 2. WEATHER WARNING WITH SMART 1-CLICK LOCATION SWAP */}
+        {/* WEATHER WARNING WITH SMART 1-CLICK LOCATION SWAP */}
         <WeatherWarning
           location={currentLocation}
           onSwapLocation={(newLoc) => setCurrentLocation(newLoc)}
         />
 
-        {/* PRICE SUMMARY CARD */}
+        {/* ACCURATE PRICE SUMMARY CARD */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>📍 {lang === 'fi' ? 'Varauksen yhteenveto' : 'Booking summary'}</Text>
           <View style={styles.summaryRow}>
@@ -212,10 +271,12 @@ export default function BookingScreen({ route, navigation }) {
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Ajankohta:</Text>
-            <Text style={styles.summaryValue}>{selectedDate || 'Tänään'} klo {selectedTime || '12:00'}</Text>
+            <Text style={styles.summaryValue}>{selectedDate || 'Tänään'} ({selectedTime || '09:00 - 12:00'})</Text>
           </View>
           <View style={[styles.summaryRow, styles.summaryRowBorder]}>
-            <Text style={styles.summaryLabel}>Laudan vuokrahinta:</Text>
+            <Text style={styles.summaryLabel}>
+              {priceDetails.isFullDay ? 'Päivävuokra (Koko päivä):' : `Tuntivuokra (${priceDetails.hourlyRate} €/h × ${priceDetails.hours}h):`}
+            </Text>
             <Text style={styles.summaryValue}>{basePriceNum} €</Text>
           </View>
         </View>
@@ -255,7 +316,7 @@ export default function BookingScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* 1. FINNISH SPORTS BENEFIT VOUCHER PAYMENT METHOD SELECTOR */}
+        {/* PAYMENT METHOD SELECTOR */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>💳 {lang === 'fi' ? 'Valitse maksutapa' : 'Select payment method'}</Text>
           <Text style={styles.cardSubtitle}>
@@ -386,6 +447,10 @@ export default function BookingScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f0f4f7' },
   container: { padding: 16, paddingBottom: 50 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
+  loadingText: { marginTop: 14, color: '#556b7a', fontSize: 14, fontWeight: '600' },
+  notFoundContainer: { padding: 30, alignItems: 'center' },
+  notFoundText: { color: '#4a6070', fontSize: 14, marginBottom: 20, textAlign: 'center' },
   card: { backgroundColor: '#ffffff', borderRadius: 18, padding: 18, marginBottom: 14, borderWidth: 1, borderColor: '#e2ebf0' },
   cardTitle: { fontSize: 16, fontWeight: '800', color: '#0f2f3d', marginBottom: 6 },
   cardSubtitle: { fontSize: 12, color: '#687e8c', marginBottom: 14 },
@@ -394,7 +459,6 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 13, color: '#687e8c' },
   summaryValue: { fontSize: 13, fontWeight: '700', color: '#0f2f3d' },
 
-  // PAYMENT METHODS
   paymentMethodBox: {
     minHeight: 54,
     backgroundColor: '#f8fafc',

@@ -18,7 +18,7 @@ export default function ProductDetail({ route, navigation }) {
   const [toastMessage, setToastMessage] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
 
-  // 2. FETCH PRODUCT INDEPENDENTLY FROM API BY URL PARAM ID
+  // FETCH PRODUCT INDEPENDENTLY FROM API BY URL PARAM ID
   useEffect(() => {
     if (targetId) {
       setLoadingProduct(!product);
@@ -154,7 +154,7 @@ export default function ProductDetail({ route, navigation }) {
           {product.provider ? (
             <TouchableOpacity
               style={styles.providerCard}
-              onPress={() => navigation.navigate('ProviderDetail', { provider: product.provider })}
+              onPress={() => navigation.navigate('ProviderDetail', { providerId: product.provider.id || 'p-1', provider: product.provider })}
             >
               <Text style={styles.providerCardTitle}>Tietoa vuokraajasta:</Text>
               <Text style={styles.providerCardName}>{product.provider.name}</Text>
@@ -193,12 +193,13 @@ export default function ProductDetail({ route, navigation }) {
           </View>
         </View>
 
-        {/* CONTINUE TO BOOKING */}
+        {/* CONTINUE TO BOOKING WITH CLEAN PRODUCT ID ROUTING */}
         <TouchableOpacity
           style={[styles.primaryButton, (!selectedDate || !selectedTime) && styles.buttonDisabled]}
           disabled={!selectedDate || !selectedTime}
           onPress={() =>
             navigation.navigate('Booking', {
+              productId: product.id,
               product,
               selectedDate,
               selectedTime
