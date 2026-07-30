@@ -505,3 +505,12 @@ export async function submitHostOnboarding(data) {
     body: JSON.stringify(data)
   });
 }
+
+export async function postDemandLead(email, locationName) {
+  return fetchJson('/api/leads/demand', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, locationName })
+  });
+}
+

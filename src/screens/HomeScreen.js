@@ -19,6 +19,43 @@ export default function HomeScreen({ navigation }) {
   const [searchText, setSearchText] = useState('');
   const [selectedLocation, setSelectedLocation] = useState(t('allLocations'));
   const [sortOrder, setSortOrder] = useState(t('sortPopular'));
+  const [selectedDate, setSelectedDate] = useState('Tänään');
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState('Koko päivä');
+  const [loading, setLoading] = useState(true);
+
+  const dateOptions = [
+    { label: lang === 'fi' ? 'Tänään' : 'Today', value: 'Tänään' },
+    { label: lang === 'fi' ? 'Huomenna' : 'Tomorrow', value: 'Huomenna' },
+    { label: lang === 'fi' ? 'Viikonloppu' : 'Weekend', value: 'Viikonloppu' }
+  ];
+
+  const timeOptions = [
+    { label: lang === 'fi' ? 'Koko päivä' : 'Full Day', value: 'Koko päivä' },
+    { label: lang === 'fi' ? 'Aamupäivä (9-13)' : 'Morning (9-13)', value: 'Aamupäivä' },
+    { label: lang === 'fi' ? 'Iltapäivä (13-17)' : 'Afternoon (13-17)', value: 'Iltapäivä' },
+    { label: lang === 'fi' ? 'Ilta (17-21)' : 'Evening (17-21)', value: 'Ilta' }
+  ];
+
+  const howItWorksSteps = [
+    {
+      step: '1',
+      icon: 'search',
+      title: lang === 'fi' ? '1. Etsi & valitse lauta' : '1. Search & choose board',
+      desc: lang === 'fi' ? 'Selaa Oulun lähimpiä noutopisteitä (Nallikari, Tuira, Hietasaari).' : 'Browse nearby pick-up spots in Oulu.'
+    },
+    {
+      step: '2',
+      icon: 'credit-card',
+      title: lang === 'fi' ? '2. Varaa & maksa verkossa' : '2. Book & pay securely',
+      desc: lang === 'fi' ? 'Valitse kellonaika ja maksa turvallisesti ilman panttimurheita.' : 'Choose time slot and pay securely online.'
+    },
+    {
+      step: '3',
+      icon: 'check-circle',
+      title: lang === 'fi' ? '3. Nouda lauta & nauti' : '3. Pick up & enjoy',
+      desc: lang === 'fi' ? 'Nouda valmis SUP-lauta suoraan rannalta ja lähde vesille!' : 'Pick up your SUP board directly at the beach!'
+    }
+  ];
 
   const categoryCards = [
     { title: t('catAllroundTitle'), label: t('catAllroundLabel'), query: 'all-round', icon: 'disc' },
@@ -67,9 +104,16 @@ export default function HomeScreen({ navigation }) {
   }
 
   useEffect(() => {
+    setLoading(true);
     fetchJson('/api/products')
-      .then((data) => setProducts(data))
-      .catch(() => setProducts([]));
+      .then((data) => {
+        setProducts(data);
+        setLoading(false);
+      })
+      .catch(() => {
+        setProducts([]);
+        setLoading(false);
+      });
 
     fetchJson('/api/categories')
       .then((data) => setCategories(data))
@@ -83,39 +127,53 @@ export default function HomeScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        {/* TOP HEADER BAR — ALL BUTTONS MIN 44PX HEIGHT */}
+        {/* TOP HEADER BAR — MIN 44PX HEIGHT FOR ALL TOUCH TARGETS */}
         <View style={styles.topHeaderBar}>
           <Text style={styles.brandTitle}>GearSpot <Text style={styles.brandBadge}>OULU</Text></Text>
           <View style={styles.headerRightGroup}>
-            <TouchableOpacity style={styles.langToggleBtn} onPress={toggleLang} activeOpacity={0.7}>
-              <Icon name="globe" size={14} color="#0f2f3d" style={styles.btnIcon} />
+            <TouchableOpacity
+              style={styles.langToggleBtn}
+              onPress={toggleLang}
+              activeOpacity={0.7}
+              accessibilityLabel="Vaihda kieli FI tai EN"
+              accessibilityRole="button"
+            >
+              <Icon name="globe" size={14} color="#0f2f3d" style={styles.btnIcon} accessibilityLabel="Kielivalitsimen kuvake" />
               <Text style={styles.langToggleText}>{lang === 'fi' ? 'FI | EN' : 'EN | FI'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.profileBtn} onPress={() => navigation.navigate('Profile')} activeOpacity={0.7}>
-              <Icon name="user" size={14} color="#ffffff" style={styles.btnIcon} />
+            <TouchableOpacity
+              style={styles.profileBtn}
+              onPress={() => navigation.navigate('Profile')}
+              activeOpacity={0.7}
+              accessibilityLabel="Käyttäjäprofiili"
+              accessibilityRole="button"
+            >
+              <Icon name="user" size={14} color="#ffffff" style={styles.btnIcon} accessibilityLabel="Profiilin kuvake" />
               <Text style={styles.profileBtnText}>{t('profile')}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* FOUNDING HOST BANNER WITH BILINGUAL TRANSLATION */}
+        {/* FOUNDING HOST BANNER */}
         <TouchableOpacity
           style={styles.bannerTealCard}
           onPress={() => navigation.navigate('BecomeHost')}
           activeOpacity={0.8}
+          accessibilityLabel="Founding Host tarjous"
+          accessibilityRole="button"
         >
           <View style={styles.bannerHeaderRow}>
-            <Icon name="award" size={16} color="#00e5d1" style={{ marginRight: 6 }} />
+            <Icon name="award" size={16} color="#00e5d1" style={{ marginRight: 6 }} accessibilityLabel="Palkintokuvake" />
             <Text style={styles.bannerBadgeText}>{t('foundingHostBadge')}</Text>
           </View>
           <Text style={styles.bannerTitleText}>{t('foundingHostHeadline')}</Text>
           <Text style={styles.bannerSubtitleText}>{t('foundingHostSub')}</Text>
         </TouchableOpacity>
 
-        {/* HERO BANNER */}
+        {/* HERO BANNER WITH DATE & TIME SEARCH FILTER */}
         <View style={styles.heroCard}>
           <View style={styles.badgeRow}>
-            <Icon name="sun" size={14} color="#00e5d1" style={{ marginRight: 6 }} />
+            <Icon name="sun" size={14} color="#00e5d1" style={{ marginRight: 6 }} accessibilityLabel="Aurinkokuvake" />
             <Text style={styles.heroBadgeText}>Oulun SUP-kesä 2026</Text>
           </View>
 
@@ -131,11 +189,56 @@ export default function HomeScreen({ navigation }) {
               onChangeText={setSearchText}
               returnKeyType="search"
               onSubmitEditing={goToSearch}
+              accessibilityLabel="Hae lautoja tai noutopistettä"
             />
-            <TouchableOpacity style={styles.searchButton} onPress={goToSearch} activeOpacity={0.8}>
-              <Icon name="search" size={14} color="#ffffff" style={{ marginRight: 6 }} />
+            <TouchableOpacity
+              style={styles.searchButton}
+              onPress={goToSearch}
+              activeOpacity={0.8}
+              accessibilityLabel="Aloita haku"
+              accessibilityRole="button"
+            >
+              <Icon name="search" size={14} color="#ffffff" style={{ marginRight: 6 }} accessibilityLabel="Hakukuvake" />
               <Text style={styles.searchButtonText}>{t('searchBtn')}</Text>
             </TouchableOpacity>
+          </View>
+
+          {/* 2. DATE & TIME SEARCH FILTER */}
+          <Text style={styles.chipSectionLabel}>
+            {lang === 'fi' ? '📅 Milloin haluat suppailla?' : '📅 When do you want to paddle?'}
+          </Text>
+          <View style={styles.dateTimeContainer}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+              {dateOptions.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[styles.dateTimeChip, selectedDate === opt.value && styles.dateTimeChipActive]}
+                  onPress={() => setSelectedDate(opt.value)}
+                  activeOpacity={0.7}
+                  accessibilityLabel={`Päivämäärä ${opt.label}`}
+                  accessibilityRole="button"
+                >
+                  <Icon name="calendar" size={12} color={selectedDate === opt.value ? '#ffffff' : '#b2c8d4'} style={{ marginRight: 4 }} />
+                  <Text style={[styles.dateTimeChipText, selectedDate === opt.value && styles.dateTimeChipTextActive]}>{opt.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {timeOptions.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[styles.dateTimeChip, selectedTimeSlot === opt.value && styles.dateTimeChipActive]}
+                  onPress={() => setSelectedTimeSlot(opt.value)}
+                  activeOpacity={0.7}
+                  accessibilityLabel={`Kellonaika ${opt.label}`}
+                  accessibilityRole="button"
+                >
+                  <Icon name="clock" size={12} color={selectedTimeSlot === opt.value ? '#ffffff' : '#b2c8d4'} style={{ marginRight: 4 }} />
+                  <Text style={[styles.dateTimeChipText, selectedTimeSlot === opt.value && styles.dateTimeChipTextActive]}>{opt.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
 
           {/* OULU LOCATION CHIPS */}
@@ -147,29 +250,51 @@ export default function HomeScreen({ navigation }) {
                 style={styles.locationChip}
                 onPress={() => navigation.navigate('MapSearch', { initialQuery: item.query })}
                 activeOpacity={0.7}
+                accessibilityLabel={`Noutopiste ${item.label}`}
+                accessibilityRole="button"
               >
-                <Icon name={item.icon || 'map-pin'} size={14} color="#ffffff" style={{ marginRight: 6 }} />
+                <Icon name={item.icon || 'map-pin'} size={14} color="#ffffff" style={{ marginRight: 6 }} accessibilityLabel="Noutopisteen kuvake" />
                 <Text style={styles.locationChipText}>{item.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* GROUP BOOKING BANNER WITH BILINGUAL TRANSLATION */}
+        {/* 3. "MITEN SE TOIMII" - 3-STEP VISUAL EXPLANATION SECTION */}
+        <View style={styles.howItWorksCard} accessibilityLabel="Miten GearSpot toimii">
+          <Text style={styles.howItWorksTitle}>
+            {lang === 'fi' ? '💡 Miten GearSpot toimii?' : '💡 How GearSpot Works'}
+          </Text>
+          <View style={styles.howItWorksRow}>
+            {howItWorksSteps.map((s) => (
+              <View key={s.step} style={styles.howItWorksStepItem}>
+                <View style={styles.stepIconCircle}>
+                  <Icon name={s.icon} size={18} color="#15948b" accessibilityLabel={s.title} />
+                </View>
+                <Text style={styles.stepItemTitle}>{s.title}</Text>
+                <Text style={styles.stepItemDesc}>{s.desc}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* GROUP BOOKING BANNER */}
         <TouchableOpacity
           style={styles.bannerTealCard}
           onPress={() => navigation.navigate('GroupBooking')}
           activeOpacity={0.8}
+          accessibilityLabel="Ryhmävarausosio"
+          accessibilityRole="button"
         >
           <View style={styles.bannerHeaderRow}>
-            <Icon name="users" size={16} color="#00e5d1" style={{ marginRight: 6 }} />
+            <Icon name="users" size={16} color="#00e5d1" style={{ marginRight: 6 }} accessibilityLabel="Ryhmäkuvake" />
             <Text style={styles.bannerBadgeText}>{t('groupBookingBadge')}</Text>
           </View>
           <Text style={styles.bannerTitleText}>{t('groupBookingTitle')}</Text>
           <Text style={styles.bannerSubtitleText}>{t('groupBookingSub')}</Text>
         </TouchableOpacity>
 
-        {/* GUIDES SECTION WITH BILINGUAL TRANSLATION */}
+        {/* GUIDES SECTION */}
         <Text style={styles.sectionTitle}>{t('guidesTitle')}</Text>
         <View style={styles.guideRow}>
           {guideArticles.map((article) => (
@@ -178,9 +303,11 @@ export default function HomeScreen({ navigation }) {
               style={styles.guideCard}
               onPress={() => navigation.navigate('GuideArticle', { slug: article.slug })}
               activeOpacity={0.7}
+              accessibilityLabel={article.title}
+              accessibilityRole="button"
             >
               <View style={styles.guideHeaderRow}>
-                <Icon name="book-open" size={15} color="#15948b" style={{ marginRight: 6 }} />
+                <Icon name="book-open" size={15} color="#15948b" style={{ marginRight: 6 }} accessibilityLabel="Opaskuvake" />
                 <Text style={styles.guideTitle}>{article.title}</Text>
               </View>
               <Text style={styles.guideDesc}>{article.desc}</Text>
@@ -189,7 +316,7 @@ export default function HomeScreen({ navigation }) {
           ))}
         </View>
 
-        {/* CATEGORY CARDS WITH BILINGUAL TRANSLATION */}
+        {/* CATEGORY CARDS */}
         <Text style={styles.sectionTitle}>{t('categoriesTitle')}</Text>
         <View style={styles.categoryRow}>
           {categoryCards.map((category) => (
@@ -198,9 +325,11 @@ export default function HomeScreen({ navigation }) {
               style={styles.categoryCard}
               onPress={() => navigation.navigate('MapSearch', { initialQuery: category.query })}
               activeOpacity={0.7}
+              accessibilityLabel={category.title}
+              accessibilityRole="button"
             >
               <View style={styles.categoryHeaderRow}>
-                <Icon name={category.icon || 'disc'} size={15} color="#15948b" style={{ marginRight: 6 }} />
+                <Icon name={category.icon || 'disc'} size={15} color="#15948b" style={{ marginRight: 6 }} accessibilityLabel="Kategoriakuvake" />
                 <Text style={styles.categoryTitle}>{category.title}</Text>
               </View>
               <Text style={styles.categoryLabel}>{category.label}</Text>
@@ -208,7 +337,7 @@ export default function HomeScreen({ navigation }) {
           ))}
         </View>
 
-        {/* LOCATION & SORT FILTERS WITH BILINGUAL TRANSLATION */}
+        {/* LOCATION & SORT FILTERS */}
         <View style={styles.filterSection}>
           <Text style={styles.filterSectionTitle}>{t('pickUpLabel')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
@@ -218,6 +347,8 @@ export default function HomeScreen({ navigation }) {
                 style={[styles.filterChip, (selectedLocation === loc || (selectedLocation === 'Kaikki' && loc === t('allLocations'))) && styles.filterChipActive]}
                 onPress={() => setSelectedLocation(loc)}
                 activeOpacity={0.7}
+                accessibilityLabel={`Noutopistesuodatin ${loc}`}
+                accessibilityRole="button"
               >
                 <Text style={[styles.filterChipText, (selectedLocation === loc || (selectedLocation === 'Kaikki' && loc === t('allLocations'))) && styles.filterChipTextActive]}>{loc}</Text>
               </TouchableOpacity>
@@ -232,6 +363,8 @@ export default function HomeScreen({ navigation }) {
                 style={[styles.sortChip, sortOrder === sort && styles.sortChipActive]}
                 onPress={() => setSortOrder(sort)}
                 activeOpacity={0.7}
+                accessibilityLabel={`Järjestä ${sort}`}
+                accessibilityRole="button"
               >
                 <Text style={[styles.sortChipText, sortOrder === sort && styles.sortChipTextActive]}>{sort}</Text>
               </TouchableOpacity>
@@ -239,13 +372,18 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* PRODUCTS SECTION WITH BILINGUAL TRANSLATION */}
+        {/* PRODUCTS SECTION WITH SKELETON LOADING & DEMAND LEAD CAPTURE */}
         <View style={styles.productsHeader}>
           <Text style={styles.sectionTitle}>{t('availableBoards')} ({filteredProducts.length})</Text>
           <Text style={styles.sectionSubtitle}>{t('includesGear')}</Text>
         </View>
 
-        <ProductList products={filteredProducts} navigation={navigation} />
+        <ProductList
+          products={filteredProducts}
+          loading={loading}
+          selectedLocation={selectedLocation}
+          navigation={navigation}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -270,7 +408,7 @@ const styles = StyleSheet.create({
     borderColor: '#d2dfa6',
     flexDirection: 'row',
     alignItems: 'center',
-    justify: 'center'
+    justifyContent: 'center'
   },
   btnIcon: { marginRight: 6 },
   langToggleText: { color: '#0f2f3d', fontSize: 13, fontWeight: '800' },
@@ -282,11 +420,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    justify: 'center'
+    justifyContent: 'center'
   },
   profileBtnText: { color: '#ffffff', fontSize: 13, fontWeight: '800' },
 
-  // UNIFIED BRAND TEAL BANNER (#15948b) FOR BOTH BANNERS
+  // UNIFIED BRAND TEAL BANNER (#15948b)
   bannerTealCard: {
     minHeight: 60,
     backgroundColor: '#15948b',
@@ -317,8 +455,8 @@ const styles = StyleSheet.create({
   badgeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   heroBadgeText: { color: '#00e5d1', fontSize: 12, fontWeight: '800', uppercase: true, letterSpacing: 0.5 },
   heroTitle: { fontSize: 22, fontWeight: '800', color: '#ffffff', lineHeight: 28, marginBottom: 8 },
-  heroSubtitle: { fontSize: 13, color: '#b2c8d4', lineHeight: 19, marginBottom: 18 },
-  searchContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  heroSubtitle: { fontSize: 13, color: '#b2c8d4', lineHeight: 19, marginBottom: 16 },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   searchInput: {
     flex: 1,
     minHeight: 46,
@@ -340,10 +478,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 14,
     flexDirection: 'row',
-    justify: 'center',
+    justifyContent: 'center',
     alignItems: 'center'
   },
   searchButtonText: { color: '#ffffff', fontWeight: '800', fontSize: 13 },
+
+  // DATE & TIME SEARCH FILTER
+  dateTimeContainer: { marginBottom: 14 },
+  dateTimeChip: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)'
+  },
+  dateTimeChipActive: { backgroundColor: '#15948b', borderColor: '#15948b' },
+  dateTimeChipText: { color: '#b2c8d4', fontSize: 12, fontWeight: '600' },
+  dateTimeChipTextActive: { color: '#ffffff', fontWeight: '800' },
+
   chipSectionLabel: { fontSize: 12, color: '#90aab8', fontWeight: '700', marginBottom: 8 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 
@@ -360,6 +517,25 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.18)'
   },
   locationChipText: { color: '#ffffff', fontSize: 13, fontWeight: '700' },
+
+  // 3. "MITEN SE TOIMII" - 3-STEP EXPLANATION SECTION STYLES
+  howItWorksCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e2ebf0',
+    shadowColor: '#0f2f3d',
+    shadowOpacity: 0.04,
+    shadowRadius: 10
+  },
+  howItWorksTitle: { fontSize: 16, fontWeight: '800', color: '#0f2f3d', marginBottom: 14 },
+  howItWorksRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  howItWorksStepItem: { flex: 1, alignItems: 'center' },
+  stepIconCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#e6f7f5', justifyContent: 'center', alignItems: 'center', marginBottom: 8, borderWidth: 1, borderColor: '#15948b' },
+  stepItemTitle: { fontSize: 12, fontWeight: '800', color: '#0f2f3d', textAlign: 'center', marginBottom: 4 },
+  stepItemDesc: { fontSize: 11, color: '#687e8c', textAlign: 'center', lineHeight: 15 },
 
   // GUIDES
   guideRow: { marginBottom: 16 },
@@ -390,7 +566,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderWidth: 1,
     borderColor: '#e2ebf0',
-    justify: 'center'
+    justifyContent: 'center'
   },
   categoryHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
   categoryTitle: { fontSize: 14, fontWeight: '800', color: '#0f2f3d' },
@@ -409,7 +585,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
     borderWidth: 1,
     borderColor: '#d2dfa6',
-    justify: 'center',
+    justifyContent: 'center',
     alignItems: 'center'
   },
   filterChipActive: { backgroundColor: '#15948b', borderColor: '#15948b' },
@@ -424,7 +600,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 14,
     backgroundColor: '#f0f4f7',
-    justify: 'center',
+    justifyContent: 'center',
     alignItems: 'center'
   },
   sortChipActive: { backgroundColor: '#0f2f3d' },

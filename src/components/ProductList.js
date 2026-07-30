@@ -1,10 +1,52 @@
-import React from 'react';
-import { Text, StyleSheet, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { Text, StyleSheet, TouchableOpacity, View, TextInput } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { useLanguage } from '../contexts/LanguageContext';
+import { postDemandLead } from '../lib/api';
+import { useToast } from '../contexts/ToastContext';
+import SkeletonCard from './SkeletonCard';
 
-export default function ProductList({ products = [], navigation }) {
-  const { t } = useLanguage();
+export default function ProductList({ products = [], loading = false, selectedLocation = 'Oulu', navigation }) {
+  const { lang, t } = useLanguage();
+  const { showToast } = useToast();
+  const [email, setEmail] = useState('');
+  const [submittingLead, setSubmittingLead] = useState(false);
+  const [leadSubmitted, setLeadSubmitted] = useState(false);
+
+  const handleLeadSubmit = async () => {
+    if (!email.trim() || !email.includes('@')) {
+      return showToast(
+        lang === 'fi' ? 'Virheellinen sähköposti' : 'Invalid email',
+        lang === 'fi' ? 'Syötä toimiva sähköpostiosoite.' : 'Please enter a valid email address.'
+      );
+    }
+
+    setSubmittingLead(true);
+    try {
+      await postDemandLead(email.trim(), selectedLocation);
+      setLeadSubmitted(true);
+      showToast(
+        lang === 'fi' ? 'Kiitos ilmoittautumisesta!' : 'Thank you for subscribing!',
+        lang === 'fi'
+          ? `Ilmoitamme sinulle heti kun ensimmäinen lauta vapautuu alueelle ${selectedLocation}.`
+          : `We will notify you as soon as the first board becomes available in ${selectedLocation}.`
+      );
+    } catch (err) {
+      showToast('Virhe', err.message);
+    } finally {
+      setSubmittingLead(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.listContainer}>
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+      </View>
+    );
+  }
 
   const renderItem = ({ item }) => {
     const typeLabel = item.type ? item.type.replace('_', ' ') : 'Varuste';
@@ -17,12 +59,14 @@ export default function ProductList({ products = [], navigation }) {
         style={styles.card}
         onPress={() => navigation?.navigate('ProductDetail', { product: item })}
         activeOpacity={0.8}
+        accessibilityLabel={`${item.name}, hinta ${item.price}`}
+        accessibilityRole="button"
       >
         <View style={styles.cardHeader}>
           <View style={styles.nameColumn}>
             <Text style={styles.name}>{item.name}</Text>
             <View style={styles.locationRow}>
-              <Icon name="map-pin" size={13} color="#556b7a" style={{ marginRight: 4 }} />
+              <Icon name="map-pin" size={13} color="#556b7a" style={{ marginRight: 4 }} accessibilityLabel="Noutopiste" />
               <Text style={styles.provider}>{item.locationName || 'Oulu'} • {t('providerTag')}: {providerName}</Text>
             </View>
           </View>
@@ -35,7 +79,7 @@ export default function ProductList({ products = [], navigation }) {
 
         <View style={styles.metaRow}>
           <View style={styles.ratingBadge}>
-            <Icon name="star" size={13} color="#0e6962" style={{ marginRight: 4 }} />
+            <Icon name="star" size={13} color="#0e6962" style={{ marginRight: 4 }} accessibilityLabel="Arvostelutähdet" />
             <Text style={styles.ratingValue}>{ratingValue}</Text>
             <Text style={styles.reviewCount}>({reviewCount} {t('reviewsCount')})</Text>
           </View>
@@ -48,7 +92,7 @@ export default function ProductList({ products = [], navigation }) {
 
         {Array.isArray(item.photos) && item.photos.length ? (
           <View style={styles.photoRow}>
-            <Icon name="camera" size={12} color="#7a8e9c" style={{ marginRight: 4 }} />
+            <Icon name="camera" size={12} color="#7a8e9c" style={{ marginRight: 4 }} accessibilityLabel="Valokuvat" />
             <Text style={styles.photoCount}>{item.photos.length} {t('photosCount')}</Text>
           </View>
         ) : null}
@@ -56,12 +100,55 @@ export default function ProductList({ products = [], navigation }) {
     );
   };
 
+  // 1. ACTIVE DEMAND LEAD CAPTURE FORM WHEN NO PRODUCTS ARE AVAILABLE
   if (products.length === 0) {
     return (
-      <View style={styles.emptyContainer}>
-        <Icon name="info" size={24} color="#15948b" style={{ marginBottom: 8 }} />
-        <Text style={styles.emptyTitle}>{t('emptyTitle')}</Text>
-        <Text style={styles.emptySubtitle}>{t('emptySub')}</Text>
+      <View style={styles.leadCaptureCard} accessibilityLabel="Kysynnän ilmoittautumislomake">
+        <View style={styles.leadHeaderRow}>
+          <Icon name="bell" size={20} color="#0e6962" style={{ marginRight: 8 }} accessibilityLabel="Ilmoitusikoni" />
+          <Text style={styles.leadTitle}>
+            {lang === 'fi' ? 'Oletko ensimmäisten joukossa?' : 'Want to be notified first?'}
+          </Text>
+        </View>
+
+        <Text style={styles.leadSubtitle}>
+          {lang === 'fi'
+            ? `Laudat ilmestyvät pian valitsemallesi alueelle (${selectedLocation}) — jätä sähköpostisi niin ilmoitamme heti kun ensimmäinen lauta on saatavilla lähelläsi.`
+            : `SUP boards are arriving soon to ${selectedLocation} — leave your email and we will notify you the moment the first board becomes available near you.`}
+        </Text>
+
+        {leadSubmitted ? (
+          <View style={styles.successBox}>
+            <Icon name="check-circle" size={16} color="#0e6962" style={{ marginRight: 6 }} accessibilityLabel="Vahvistusilmoitus" />
+            <Text style={styles.successText}>
+              {lang === 'fi' ? 'Sähköposti tallennettu! Ilmoitamme sinulle ensimmäisenä.' : 'Email saved! We will notify you first.'}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.leadInputRow}>
+            <TextInput
+              style={styles.leadInput}
+              placeholder={lang === 'fi' ? 'Anna sähköpostiosoitteesi...' : 'Enter your email...'}
+              placeholderTextColor="#8699a6"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              accessibilityLabel="Sähköpostiosoitteen syöttökenttä"
+            />
+            <TouchableOpacity
+              style={[styles.leadSubmitBtn, submittingLead && styles.disabledBtn]}
+              onPress={handleLeadSubmit}
+              disabled={submittingLead}
+              accessibilityLabel="Ilmoita minulle"
+              accessibilityRole="button"
+            >
+              <Text style={styles.leadSubmitBtnText}>
+                {lang === 'fi' ? 'Ilmoita minulle' : 'Notify me'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   }
@@ -104,13 +191,52 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f0f5f8' },
   ratingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#e6f7f5', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: '#15948b' },
   ratingValue: { color: '#0e6962', fontWeight: '800', fontSize: 13, marginRight: 4 },
-  reviewCount: { color: '#15948b', fontSize: 11, fontWeight: '600' },
+  reviewCount: { color: '#0e6962', fontSize: 11, fontWeight: '700' },
   priceContainer: { alignItems: 'flex-end' },
   priceLabel: { fontSize: 10, color: '#7a8e9c', fontWeight: '700' },
   price: { color: '#15948b', fontSize: 17, fontWeight: '800' },
   photoRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
   photoCount: { color: '#7a8e9c', fontSize: 11, fontWeight: '600' },
-  emptyContainer: { padding: 30, alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 16, borderWidth: 1, borderColor: '#e2ebf0' },
-  emptyTitle: { fontSize: 15, fontWeight: '700', color: '#0f2f3d', marginBottom: 6 },
-  emptySubtitle: { fontSize: 13, color: '#687e8c', textAlign: 'center' }
+
+  // ACTIVE DEMAND LEAD CAPTURE FORM STYLES
+  leadCaptureCard: {
+    backgroundColor: '#e6f7f5',
+    borderColor: '#15948b',
+    borderWidth: 1.5,
+    borderRadius: 20,
+    padding: 20,
+    marginVertical: 12,
+    shadowColor: '#0f2f3d',
+    shadowOpacity: 0.05,
+    shadowRadius: 10
+  },
+  leadHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  leadTitle: { fontSize: 17, fontWeight: '800', color: '#0f2f3d' },
+  leadSubtitle: { fontSize: 13, color: '#4a6070', lineHeight: 20, marginBottom: 16 },
+  leadInputRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  leadInput: {
+    flex: 1,
+    minWidth: 200,
+    minHeight: 46,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#15948b',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    fontSize: 13,
+    color: '#0f2f3d'
+  },
+  leadSubmitBtn: {
+    minHeight: 46,
+    backgroundColor: '#15948b',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  leadSubmitBtnText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
+  disabledBtn: { opacity: 0.6 },
+  successBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#15948b' },
+  successText: { color: '#0e6962', fontSize: 13, fontWeight: '800' }
 });

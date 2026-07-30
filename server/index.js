@@ -1776,6 +1776,30 @@ app.post('/api/feedback-reports', async (req, res) => {
   return res.status(201).json({ id: report.id, status: report.status });
 });
 
+let demandLeads = [];
+async function readDemandLeads() {
+  return readStoreList('gearspot:demandLeads', demandLeads);
+}
+app.post('/api/leads/demand', async (req, res) => {
+  const { email, locationName } = req.body || {};
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({ error: 'Valid email required' });
+  }
+
+  const leads = await readDemandLeads();
+  const newLead = {
+    id: `lead-${Date.now()}`,
+    email: email.trim().toLowerCase(),
+    locationName: locationName || 'Oulu',
+    createdAt: new Date().toISOString()
+  };
+  leads.push(newLead);
+  await writeStoreList('gearspot:demandLeads', leads);
+  console.log('[demand-lead]', JSON.stringify(newLead));
+  return res.status(201).json({ ok: true, message: 'Demand lead saved' });
+});
+
+
 app.patch('/api/feedback-reports/:id', async (req, res) => {
   const reports = await readFeedbackReports();
   const report = reports.find((item) => item.id === req.params.id);
