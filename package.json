@@ -5,7 +5,7 @@
   "scripts": {
     "start": "expo start",
     "web": "expo start --web",
-    "build:web": "expo export --platform web",
+    "build:web": "npx expo export --platform web",
     "preview:web": "python3 -m http.server 4173 --directory dist",
     "preview:web:stable": "node server/web-preview.js",
     "android": "expo run:android",
@@ -16,7 +16,7 @@
     "test": "jest",
     "test:unit": "jest",
     "test:e2e": "npx playwright test",
-    "smoke:deploy": "bash scripts/smoke_deploy.sh",
+    "smoke:deploy": "node scripts/smoke_deploy.js",
     "test:all": "npm run test:unit && npm run test:e2e",
     "release:gate": "bash scripts/release_gate.sh",
     "release:easy": "bash scripts/release_easy.sh"
