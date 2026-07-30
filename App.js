@@ -1,5 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
+import { StripeProvider } from '@stripe/stripe-react-native';
+import { STRIPE_PUBLISHABLE_KEY } from './src/config';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import HomeScreen from './src/screens/HomeScreen';
 import ProductDetail from './src/screens/ProductDetail';
@@ -16,23 +18,9 @@ import FeedbackReportsScreen from './src/screens/FeedbackReportsScreen';
 import AdminOpsScreen from './src/screens/AdminOpsScreen';
 import BecomeHostScreen from './src/screens/BecomeHostScreen';
 import TermsSafetyScreen from './src/screens/TermsSafetyScreen';
-import TermsScreen from './src/screens/TermsScreen';
-import MagicLinkAuthScreen from './src/screens/MagicLinkAuthScreen';
-import HandoffScreen from './src/screens/HandoffScreen';
-import DepositEvidenceScreen from './src/screens/DepositEvidenceScreen';
-import DisputeScreen from './src/screens/DisputeScreen';
-import ListingModerationScreen from './src/screens/ListingModerationScreen';
-import PilotInviteScreen from './src/screens/PilotInviteScreen';
-import NotificationCenterScreen from './src/screens/NotificationCenterScreen';
-import DataExportScreen from './src/screens/DataExportScreen';
-import RenterProfileScreen from './src/screens/RenterProfileScreen';
-import HostProfileScreen from './src/screens/HostProfileScreen';
-import MessagingScreen from './src/screens/MessagingScreen';
-import BookingHistoryScreen from './src/screens/BookingHistoryScreen';
-import PaymentHistoryScreen from './src/screens/PaymentHistoryScreen';
-import CancellationScreen from './src/screens/CancellationScreen';
-import SearchAndFilterScreen from './src/screens/SearchAndFilterScreen';
-import HostOnboardingScreen from './src/screens/HostOnboardingScreen';
+import ChatScreen from './src/screens/ChatScreen';
+import TermsOfServiceScreen from './src/screens/TermsOfServiceScreen';
+import PrivacyPolicyScreen from './src/screens/PrivacyPolicyScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -42,6 +30,7 @@ export default function App() {
 
   return (
     <AppErrorBoundary routeName={routeName}>
+      <StripeProvider publishableKey={STRIPE_PUBLISHABLE_KEY}>
       <NavigationContainer
         ref={navigationRef}
         onReady={() => setRouteName(navigationRef.current?.getCurrentRoute()?.name || 'Home')}
@@ -56,31 +45,18 @@ export default function App() {
           <Stack.Screen name="Booking" component={BookingScreen} />
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="FeedbackReports" component={FeedbackReportsScreen} />
+        <Stack.Screen name="Chat" component={ChatScreen} />
           <Stack.Screen name="AdminOps" component={AdminOpsScreen} />
           <Stack.Screen name="BecomeHost" component={BecomeHostScreen} />
           <Stack.Screen name="TermsSafety" component={TermsSafetyScreen} />
-          <Stack.Screen name="Terms" component={TermsScreen} />
+          <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} />
+          <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
           <Stack.Screen name="Auth" component={AuthScreen} />
-          <Stack.Screen name="MagicLinkAuth" component={MagicLinkAuthScreen} />
           <Stack.Screen name="MapSearch" component={MapSearchScreen} />
-          <Stack.Screen name="Handoff" component={HandoffScreen} />
-          <Stack.Screen name="DepositEvidence" component={DepositEvidenceScreen} />
-          <Stack.Screen name="Dispute" component={DisputeScreen} />
-          <Stack.Screen name="ListingModeration" component={ListingModerationScreen} />
-          <Stack.Screen name="PilotInvite" component={PilotInviteScreen} />
-          <Stack.Screen name="NotificationCenter" component={NotificationCenterScreen} />
-          <Stack.Screen name="DataExport" component={DataExportScreen} />
-          <Stack.Screen name="RenterProfile" component={RenterProfileScreen} />
-          <Stack.Screen name="HostProfile" component={HostProfileScreen} />
-          <Stack.Screen name="Messaging" component={MessagingScreen} />
-          <Stack.Screen name="BookingHistory" component={BookingHistoryScreen} />
-          <Stack.Screen name="PaymentHistory" component={PaymentHistoryScreen} />
-          <Stack.Screen name="Cancellation" component={CancellationScreen} />
-          <Stack.Screen name="SearchAndFilter" component={SearchAndFilterScreen} />
-          <Stack.Screen name="HostOnboarding" component={HostOnboardingScreen} />
         </Stack.Navigator>
         <ReportIssueButton routeName={routeName} />
       </NavigationContainer>
+      </StripeProvider>
     </AppErrorBoundary>
   );
 }

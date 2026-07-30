@@ -3,26 +3,74 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { getStoreValue, setStoreValue } = require('./sqlite-store');
+
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const s3Client = process.env.AWS_REGION && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY ? new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  }
+}) : null;
+
+async function uploadToS3(filename, buffer, mimetype) {
+  if (!s3Client || !process.env.AWS_BUCKET_NAME) return null;
+  const command = new PutObjectCommand({
+    Bucket: process.env.AWS_BUCKET_NAME,
+    Key: filename,
+    Body: buffer,
+    ContentType: mimetype,
+    ACL: 'public-read'
+  });
+  await s3Client.send(command);
+  return `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${filename}`;
+}
+
+const Stripe = require('stripe');
+const sgMail = require('@sendgrid/mail');
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+}
+
+async function sendEmail(to, subject, text, html) { // eslint-disable-line no-unused-vars
+  if (!process.env.SENDGRID_API_KEY) {
+    console.log(`[Email Mock] To: ${to} | Subject: ${subject}`);
+    console.log(text);
+    return;
+  }
+
+  try {
+    await sgMail.send({
+      to,
+      from: process.env.SENDGRID_FROM_EMAIL || 'noreply@gearspot.fi',
+      subject,
+      text,
+      html: html || text.replace(/\n/g, '<br>')
+    });
+    console.log(`[email] Sent successfully to ${to}`);
+  } catch (error) {
+    console.error('[email-error] Failed to send email via SendGrid', error);
+  }
+}
+
 const multer = require('multer');
 const { createAuthProvider } = require('./authProvider');
 const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } });
+let sharp;
+try { sharp = require('sharp'); } catch(e) { console.warn('Sharp not installed, skipping optimization'); }
 const app = express();
 const port = process.env.PORT || 3000;
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy'); // eslint-disable-line no-unused-vars
 const authSecret = process.env.AUTH_SECRET || 'gearspot-dev-auth-secret';
 const exposeAuthCode = process.env.AUTH_EXPOSE_CODE !== 'false';
 const adminApiKey = process.env.ADMIN_API_KEY || '';
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY || 'sk_test_mock';
 const AUTH_CODE_TTL_MS = 10 * 60 * 1000;
 const AUTH_CODE_COOLDOWN_MS = 30 * 1000;
 const AUTH_REQUEST_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_REQUEST_MAX_PER_WINDOW = 6;
 const pendingLoginCodes = new Map();
 const authRequestTracker = new Map();
-
-let stripe = null;
-if (stripeSecretKey && !stripeSecretKey.includes('mock')) {
-  stripe = require('stripe')(stripeSecretKey);
-}
 
 let kv = null;
 
@@ -33,14 +81,12 @@ if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
 }
 
 const STORE_KEYS = {
+  notifications: 'gearspot:notifications',
   bookings: 'gearspot:bookings',
   dynamicReviews: 'gearspot:dynamicReviews',
   feedbackReports: 'gearspot:feedbackReports',
   authAuditLogs: 'gearspot:authAuditLogs',
-  ownerListings: 'gearspot:ownerListings',
-  inviteCodes: 'gearspot:inviteCodes',
-  notifications: 'gearspot:notifications',
-  messages: 'gearspot:messages'
+  ownerListings: 'gearspot:ownerListings'
 };
 
 const BOOKING_STAGE = {
@@ -64,7 +110,83 @@ const authProvider = createAuthProvider({
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY
 });
 
-app.use(cors());
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production' ? process.env.ALLOWED_ORIGINS?.split(',') || [] : '*',
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  let event;
+
+  try {
+    if (!endpointSecret) {
+      console.warn('STRIPE_WEBHOOK_SECRET is not configured! Failing webhook requests for security.');
+      return res.status(400).send(`Webhook Error: Missing endpoint secret`);
+    }
+    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+  } catch (err) {
+    console.error(`[stripe-webhook-error] Signature verification failed:`, err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  try {
+    if (event.type === 'payment_intent.succeeded') {
+      const paymentIntent = event.data.object;
+      const bookingId = paymentIntent.metadata.bookingId;
+
+      console.log(`[stripe] Payment successful for booking ${bookingId}`);
+
+      if (bookingId) {
+        const allBookings = await readBookings();
+        const booking = allBookings.find(b => b.id === bookingId);
+
+        if (booking) {
+          booking.paymentStatus = 'paid';
+          booking.bookingStage = BOOKING_STAGE.APPROVED;
+          booking.bookingStatus = 'confirmed';
+          booking.paidAt = new Date().toISOString();
+          booking.paymentSummary = `Stripe Payment (Intent: ${paymentIntent.id})`;
+
+          await saveBookings(allBookings);
+
+          // Lähetetään sähköpostikuitti käyttäjälle onnistuneesta maksusta
+          await sendEmail(
+            booking.email,
+            `Varausvahvistus: ${booking.product.name}`,
+            `Hei ${booking.name},\n\nVarauksesi lautaan ${booking.product.name} on vahvistettu ja maksettu!\n\nAika: ${booking.selectedDate} klo ${booking.selectedTime}\n\nVoit tarkastella varausta sovelluksen Profiili-sivulla.\n\nYstävällisin terveisin,\nGearSpot-tiimi`,
+            `<h3>Hei ${booking.name}!</h3><p>Varauksesi lautaan <strong>${booking.product.name}</strong> on vahvistettu ja maksettu!</p><p><strong>Aika:</strong> ${booking.selectedDate} klo ${booking.selectedTime}</p><p>Voit tarkastella varauksen tietoja ja viestiä omistajan kanssa sovelluksen Profiili-sivulla.</p><p>Ystävällisin terveisin,<br>GearSpot-tiimi</p>`
+          );
+        }
+      }
+    } else if (event.type === 'payment_intent.payment_failed') {
+      const paymentIntent = event.data.object;
+      const bookingId = paymentIntent.metadata.bookingId;
+
+      console.log(`[stripe] Payment failed for booking ${bookingId}`);
+
+      if (bookingId) {
+        const allBookings = await readBookings();
+        const booking = allBookings.find(b => b.id === bookingId);
+
+        if (booking) {
+          booking.paymentStatus = 'failed';
+          booking.paymentSummary = `Stripe Payment Failed`;
+
+          await saveBookings(allBookings);
+        }
+      }
+    }
+  } catch (error) {
+     console.error(`[stripe-webhook-error] Error handling event ${event?.type}:`, error.message);
+     return res.status(500).send('Webhook handler failed');
+  }
+
+  res.json({ received: true });
+});
+
 app.use(express.json());
 app.use((req, res, next) => {
   const incomingRequestId = String(req.headers['x-request-id'] || '').trim();
@@ -120,6 +242,7 @@ const products = [
     name: 'Oulu SUP — Inflatable 10\'6"',
     short: 'Helppo all-around SUP Oulun kesään, mela ja liivi mukana.',
     price: '15 €/tunti · 60 €/päivä',
+    bookingMode: 'instant',
     providerId: 'provider-1',
     searchTerms: ['sup', 'lauta', 'oulu', 'nallikari', 'stand up paddle']
   },
@@ -129,6 +252,7 @@ const products = [
     name: 'Nallikari Touring SUP 11\'2"',
     short: 'Vakaa touring-lauta pidemmille Oulun rantareiteille.',
     price: '18 €/tunti · 65 €/päivä',
+    bookingMode: 'request',
     providerId: 'provider-2',
     searchTerms: ['sup', 'lauta', 'oulu', 'tuppisaari', 'touring']
   },
@@ -141,7 +265,16 @@ const products = [
     providerId: 'provider-2',
     searchTerms: ['sup', 'aloittelija', 'oulu', 'hietasaari', 'lauta']
   }
-];
+,
+  {
+    id: 'sup-4',
+    type: 'sup_board',
+    name: 'Kuivasjärvi Family SUP',
+    short: 'Erittäin leveä ja vakaa lauta Kuivasjärvellä. Sopii myös koiran kanssa suppailuun.',
+    price: '12 €/tunti · 50 €/päivä',
+    providerId: 'provider-1',
+    searchTerms: ['sup', 'lauta', 'oulu', 'kuivasjärvi', 'koira', 'perhe']
+  }];
 
 const locations = [
   {
@@ -168,7 +301,15 @@ const locations = [
     query: 'Tuiran ranta Oulu',
     products: ['sup-2', 'sup-3']
   }
-];
+,
+  {
+    id: 'oulu-4',
+    name: 'Kuivasjärvi',
+    category: 'Lake',
+    place: 'Oulu',
+    query: 'Kuivasjärvi Oulu',
+    products: ['sup-4']
+  }];
 
 const categories = [
   { id: 'oulu-sup', title: 'Oulu SUP Pilot', label: 'SUP-laudat Oulun alueella', query: 'oulu sup' }
@@ -178,7 +319,33 @@ const categories = [
 let bookings = [];
 let dynamicReviews = [];
 let ownerListings = [];
+let users = {}; // userId -> { email, name, phone, avatarUrl }
 const feedbackReports = [];
+
+const notifications = [];
+
+async function readNotifications() {
+  return readStoreList(STORE_KEYS.notifications, notifications);
+}
+
+async function saveNotifications(items) {
+  const snapshot = [...items];
+  notifications.length = 0;
+  notifications.push(...snapshot);
+  await writeStoreList(STORE_KEYS.notifications, snapshot);
+}
+
+function generateNotification(userId, message, type = 'info', metadata = {}) {
+  return {
+    id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    userId,
+    message,
+    type,
+    metadata,
+    createdAt: new Date().toISOString(),
+    read: false
+  };
+}
 const authAuditLogs = [];
 const feedbackLogPath = path.join(__dirname, '..', 'logs', 'feedback-reports.ndjson');
 
@@ -265,44 +432,6 @@ async function saveOwnerListings(items) {
   await writeStoreList(STORE_KEYS.ownerListings, snapshot);
 }
 
-let inviteCodes = [];
-let notifications = [];
-
-async function readInviteCodes() {
-  return readStoreList(STORE_KEYS.inviteCodes, inviteCodes);
-}
-
-async function saveInviteCodes(items) {
-  const snapshot = Array.isArray(items) ? [...items] : [];
-  inviteCodes = snapshot;
-  await writeStoreList(STORE_KEYS.inviteCodes, snapshot);
-}
-
-async function readNotifications() {
-  return readStoreList(STORE_KEYS.notifications, notifications);
-}
-
-async function saveNotifications(items) {
-  const snapshot = Array.isArray(items) ? [...items] : [];
-  notifications = snapshot;
-  await writeStoreList(STORE_KEYS.notifications, snapshot);
-}
-
-function generateInviteCode() {
-  return crypto.randomBytes(9).toString('hex').toUpperCase().slice(0, 12);
-}
-
-function createNotification(userEmail, type, message) {
-  return {
-    id: `notif-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    userEmail,
-    type,
-    message,
-    read: false,
-    createdAt: new Date().toISOString()
-  };
-}
-
 function getPublicProducts() {
   return [...products, ...ownerListings.filter((listing) => listing.moderationStatus === 'approved')];
 }
@@ -329,10 +458,6 @@ function getCommunityProviders({ includePending = false } = {}) {
   );
 }
 
-async function getBookingById(id) {
-  const allBookings = await readBookings();
-  return allBookings.find((booking) => booking.id === id);
-}
 
 function isValidTransition(from, to) {
   const transitions = {
@@ -568,6 +693,10 @@ function signPayload(payloadBase64) {
 }
 
 function buildAuthToken(email) {
+  const userId = buildUserIdFromEmail(email);
+  if (!users[userId]) {
+    users[userId] = { id: userId, email, name: '', phone: '', avatarUrl: '' };
+  }
   const payload = {
     email,
     userId: buildUserIdFromEmail(email),
@@ -580,7 +709,9 @@ function buildAuthToken(email) {
 }
 
 function parseAuthToken(token) {
-  if (!token || !token.startsWith('gs-auth.')) {
+
+  // Debug
+    if (!token || !token.startsWith('gs-auth.')) {
     return null;
   }
 
@@ -715,9 +846,16 @@ app.post('/api/auth/request-code', async (req, res) => {
     expiresInSeconds: Math.floor(AUTH_CODE_TTL_MS / 1000)
   };
 
-  if (exposeAuthCode) {
+  if (exposeAuthCode || process.env.NODE_ENV === 'test') {
     response.devCode = code;
   }
+
+  await sendEmail(
+    email,
+    'Sisäänkirjautuminen GearSpot -sovellukseen',
+    `Hei!\n\nKirjautumiskoodisi on: ${code}\n\nKoodi on voimassa 10 minuuttia.`,
+    `<h3>Hei!</h3><p>Kirjautumiskoodisi on: <strong>${code}</strong></p><p>Koodi on voimassa 10 minuuttia.</p>`
+  );
 
   return res.json(response);
 });
@@ -836,8 +974,11 @@ function getSession(req) {
 app.get('/api/me', (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
-  return res.json({ email: session.email, userId: session.userId });
+  const user = users[session.userId] || { id: session.userId, email: session.email };
+  return res.json(user);
 });
+
+
 
 app.get('/api/bookings', async (req, res) => {
   const session = getSession(req);
@@ -850,25 +991,66 @@ app.post('/api/bookings', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
   await readOwnerListings();
-  const { productId, name, paymentMethod, cardLast4, termsAccepted, safetyChecklistAccepted } = req.body || {};
+
+  const { productId, name, paymentMethod, cardLast4, termsAccepted, safetyChecklistAccepted, selectedDate, selectedTime } = req.body || {};
   if (!productId || !name) return res.status(400).json({ error: 'Missing fields' });
   if (!termsAccepted || !safetyChecklistAccepted) {
     return res.status(400).json({ error: 'Terms and safety checklist must be accepted before booking' });
   }
+
   const product = getProductById(productId);
   if (!product) return res.status(404).json({ error: 'Product not found' });
+
   const id = `bkg-${Date.now()}`;
+
+  // Dynamic Pricing Implementation
+  let pricePerHour = product.pricePerHour || 15;
+
+  if (selectedDate) {
+    const dateObj = new Date(selectedDate);
+    const dayOfWeek = dateObj.getDay();
+    // 0 is Sunday, 6 is Saturday
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      // Apply weekend multiplier (e.g., 1.5x)
+      pricePerHour = Math.round(pricePerHour * 1.5);
+    }
+  }
+
+  const amountToCharge = pricePerHour * 100; // in cents
+  const isInstantBooking = product.bookingMode === 'instant' || !product.bookingMode; // Default to instant
+
+  let paymentIntent;
+  if (paymentMethod === 'stripe') {
+    try {
+      paymentIntent = await stripe.paymentIntents.create({
+        amount: amountToCharge,
+        currency: 'eur',
+        metadata: {
+          bookingId: id,
+          productId: product.id,
+          renterId: session.userId,
+        },
+      });
+    } catch (err) {
+      console.error(`[stripe-error] PaymentIntent creation failed for productId=${product.id}:`, err.message);
+      return res.status(500).json({ error: 'Maksuvälittäjään ei saatu yhteyttä.' });
+    }
+  }
+
   const safeLast4 = String(cardLast4 || '').slice(-4);
   const booking = {
     id,
     productId,
     product,
     name,
+    selectedDate,
+    selectedTime,
     email: session.email,
     renterUserId: session.userId,
-    bookingStatus: 'confirmed',
-    bookingStage: BOOKING_STAGE.APPROVED,
-    paymentStatus: 'paid',
+    bookingStatus: 'pending',
+    bookingStage: paymentMethod === 'stripe' ? 'pending_payment' : (isInstantBooking ? 'approved' : 'pending_approval'),
+    paymentStatus: 'pending',
+    paymentIntentId: typeof paymentIntent !== 'undefined' && paymentIntent ? paymentIntent.id : null,
     refundStatus: 'not_requested',
     consentVersion: '2026-07-sup-oulu-v1',
     termsAcceptedAt: new Date().toISOString(),
@@ -879,8 +1061,8 @@ app.post('/api/bookings', async (req, res) => {
     depositClaimReason: null,
     evidencePhotosBefore: [],
     evidencePhotosAfter: [],
-    paymentMethod: paymentMethod || 'mock_card',
-    paymentSummary: safeLast4 ? `Mock ${paymentMethod || 'card'} ending ${safeLast4}` : 'Mock card payment approved',
+    paymentMethod: paymentMethod || 'stripe',
+    paymentSummary: 'Waiting for Stripe payment...',
     handoffMethod: 'in_person',
     handoffCode: null,
     ownerHandoffConfirmedAt: null,
@@ -899,11 +1081,27 @@ app.post('/api/bookings', async (req, res) => {
     },
     createdAt: new Date().toISOString()
   };
-  booking.paidAt = booking.createdAt;
+
+  if (paymentMethod !== 'stripe') {
+      booking.paymentStatus = 'paid';
+      booking.bookingStatus = 'confirmed';
+      booking.bookingStage = BOOKING_STAGE.APPROVED;
+      booking.paymentSummary = safeLast4 ? `Mock card ending ${safeLast4}` : 'Mock card payment approved';
+      booking.paidAt = booking.createdAt;
+  }
+
   const allBookings = await readBookings();
   allBookings.push(booking);
+
+  const notifs = await readNotifications();
+  const renterNotif = generateNotification(session.userId, `Varauksesi lautaan ${product.name} on vastaanotettu!`, 'booking_created', { bookingId: booking.id });
+  const ownerNotif = generateNotification(product.providerId || 'admin', `Sait uuden varauksen lautaan ${product.name}!`, 'booking_received', { bookingId: booking.id });
+  notifs.push(renterNotif, ownerNotif);
+
+  await saveNotifications(notifs);
   await saveBookings(allBookings);
-  res.json(getSafeBookingView(booking));
+
+  res.status(200).json({ ...getSafeBookingView(booking), clientSecret: typeof paymentIntent !== 'undefined' && paymentIntent ? paymentIntent.client_secret : null });
 });
 
 app.post('/api/bookings/:id/refund', async (req, res) => {
@@ -928,6 +1126,11 @@ app.post('/api/bookings/:id/refund', async (req, res) => {
   booking.refundedAt = new Date().toISOString();
 
   await saveBookings(allBookings);
+
+    const notifs = await readNotifications();
+    notifs.push(generateNotification(booking.renterUserId, `Varauksesi lautaan ${booking.product.name} on peruttu ja maksu palautettu.`, 'booking_refunded', { bookingId: booking.id }));
+    notifs.push(generateNotification(booking.product.providerId || 'admin', `Varaus lautaan ${booking.product.name} on peruttu.`, 'booking_refunded', { bookingId: booking.id }));
+    await saveNotifications(notifs);
 
   return res.json(booking);
 });
@@ -1079,24 +1282,8 @@ app.post('/api/bookings/:id/dispute', async (req, res) => {
     }
   }
 
-  const { reason, description, evidencePhotos = [] } = req.body || {};
-  const dispute = {
-    id: `dispute-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    reason: String(reason || 'Unspecified').slice(0, 100),
-    description: String(description || '').slice(0, 1000),
-    evidencePhotos: Array.isArray(evidencePhotos) ? evidencePhotos.slice(0, 10) : [],
-    createdAt: new Date().toISOString(),
-    createdBy: session.email,
-    status: 'open'
-  };
-
-  if (!booking.disputes) {
-    booking.disputes = [];
-  }
-  booking.disputes.push(dispute);
-
   booking.disputedAt = new Date().toISOString();
-  booking.disputeReason = reason || 'unspecified';
+  booking.disputeReason = String(req.body?.reason || 'unspecified').slice(0, 300);
   booking.disputeResolutionStatus = 'open';
   booking.disputeResolutionNote = null;
   booking.disputeResolvedAt = null;
@@ -1253,127 +1440,59 @@ app.post('/api/bookings/:id/deposit/release', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
 
-  const booking = await getBookingById(req.params.id);
-  if (!booking) return res.status(404).json({ error: 'Booking not found' });
-
-  // Renter or owner can release
-  const isRenter = booking.email === session.email;
-  const isOwner = booking.ownerEmail === session.email;
-  if (!isRenter && !isOwner) {
-    return res.status(403).json({ error: 'Only booking parties can release deposit' });
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
   }
 
-  if (!booking.depositStatus || booking.depositStatus === 'not_required') {
-    return res.json({ ok: true, message: 'No deposit to release' });
+  if (!ALLOWED_DEPOSIT_STATUS.includes(booking.depositStatus)) {
+    return res.status(400).json({ error: 'Invalid deposit status' });
   }
 
-  if (booking.depositStatus === 'released' || booking.depositStatus === 'claimed') {
-    return res.status(400).json({ error: 'Deposit already processed' });
-  }
-
-  // Verify booking is in appropriate stage for release
-  const allowedStages = ['returned', 'completed'];
-  if (!allowedStages.includes(booking.bookingStage)) {
-    return res.status(400).json({
-      error: `Cannot release deposit in stage '${booking.bookingStage}'`
-    });
+  if (booking.depositStatus !== 'held') {
+    return res.status(400).json({ error: 'Deposit can only be released from held status' });
   }
 
   booking.depositStatus = 'released';
   booking.depositReleasedAt = new Date().toISOString();
-
-  const allBookings = await readBookings();
-  const index = allBookings.findIndex((b) => b.id === req.params.id);
-  if (index >= 0) {
-    allBookings[index] = booking;
-    await saveBookings(allBookings);
-  }
-
-  // Emit notification to renter
-  if (booking.email) {
-    const notif = createNotification(booking.email, 'deposit_released', `Depositi palautettu varauksesta ${booking.product?.name || 'tuotteesta'}`);
-    const allNotifs = await readNotifications();
-    allNotifs.push(notif);
-    await saveNotifications(allNotifs);
-  }
-
-  return res.json({ ok: true, depositStatus: 'released', releasedAt: booking.depositReleasedAt });
+  await saveBookings(allBookings);
+  return res.json(getSafeBookingView(booking));
 });
 
 app.post('/api/bookings/:id/deposit/claim', async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
 
-  const booking = await getBookingById(req.params.id);
-  if (!booking) return res.status(404).json({ error: 'Booking not found' });
-
-  // Only owner can claim (e.g., for damage/loss on dispute)
-  if (booking.ownerEmail !== session.email) {
-    return res.status(403).json({ error: 'Only owner can claim deposit' });
+  const allBookings = await readBookings();
+  const booking = allBookings.find((item) => item.id === req.params.id);
+  if (!booking || booking.email !== session.email) {
+    return res.status(404).json({ error: 'Booking not found' });
   }
 
-  if (!booking.depositStatus || booking.depositStatus === 'not_required') {
-    return res.json({ ok: true, message: 'No deposit to claim' });
+  if (!ALLOWED_DEPOSIT_STATUS.includes(booking.depositStatus)) {
+    return res.status(400).json({ error: 'Invalid deposit status' });
   }
 
-  if (booking.depositStatus === 'released' || booking.depositStatus === 'claimed') {
-    return res.status(400).json({ error: 'Deposit already processed' });
+  if (booking.depositStatus !== 'held') {
+    return res.status(400).json({ error: 'Deposit can only be claimed from held status' });
   }
 
-  // Verify there's an active dispute
-  if (!booking.disputes || booking.disputes.length === 0) {
-    return res.status(400).json({ error: 'Can only claim deposit with active dispute' });
+  const requestedAmount = Number(req.body?.amount || booking.depositAmount || 0);
+  if (Number.isNaN(requestedAmount) || requestedAmount < 0) {
+    return res.status(400).json({ error: 'amount must be a non-negative number' });
   }
 
   booking.depositStatus = 'claimed';
+  booking.depositClaimedAmount = Math.min(requestedAmount, booking.depositAmount || 0);
+  booking.depositClaimReason = String(req.body?.reason || 'damage_reported').slice(0, 300);
   booking.depositClaimedAt = new Date().toISOString();
-  booking.depositClaimReason = req.body?.reason || 'Dispute resolution';
 
-  const allBookings = await readBookings();
-  const index = allBookings.findIndex((b) => b.id === req.params.id);
-  if (index >= 0) {
-    allBookings[index] = booking;
-    await saveBookings(allBookings);
-  }
-
-  // Emit notification to renter
-  if (booking.email) {
-    const notif = createNotification(booking.email, 'deposit_claimed', `Depositi pidätetty riita-asian vuoksi: ${booking.depositClaimReason}`);
-    const allNotifs = await readNotifications();
-    allNotifs.push(notif);
-    await saveNotifications(allNotifs);
-  }
-
-  return res.json({ ok: true, depositStatus: 'claimed', claimedAt: booking.depositClaimedAt });
+  await saveBookings(allBookings);
+  return res.json(getSafeBookingView(booking));
 });
 
-app.get('/api/bookings/:id/deposit-status', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const booking = await getBookingById(req.params.id);
-  if (!booking) return res.status(404).json({ error: 'Booking not found' });
-
-  // Can view if owner or renter
-  const isOwner = booking.ownerEmail === session.email;
-  const isRenter = booking.email === session.email;
-  if (!isOwner && !isRenter) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
-  return res.json({
-    bookingId: booking.id,
-    depositStatus: booking.depositStatus || 'not_required',
-    depositAmount: booking.depositAmount || null,
-    heldAt: booking.depositHeldAt || null,
-    releasedAt: booking.depositReleasedAt || null,
-    claimedAt: booking.depositClaimedAt || null,
-    claimReason: booking.depositClaimReason || null,
-    bookingStage: booking.bookingStage
-  });
-});
-
-app.post('/api/bookings/:id/evidence', async (req, res) => {
+app.post('/api/bookings/:id/evidence', upload.array('photos', 5), async (req, res) => {
   const session = getSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
 
@@ -1817,7 +1936,19 @@ app.post('/api/owner/listings/:id/upload-photo', upload.single('photo'), async (
     return res.status(404).json({ error: 'Listing not found' });
   }
 
-  const photoUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+  const filename = `product-${req.params.id}-${Date.now()}.${req.file.mimetype.split('/')[1] || 'jpg'}`;
+  let photoUrl = await uploadToS3(filename, req.file.buffer, req.file.mimetype);
+
+  if (!photoUrl) {
+    const fs = require('fs');
+    const uploadDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadDir)) { fs.mkdirSync(uploadDir, { recursive: true }); }
+    const filepath = path.join(__dirname, 'uploads', filename);
+    fs.writeFileSync(filepath, req.file.buffer);
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.headers.host;
+    photoUrl = `${protocol}://${host}/uploads/${filename}`;
+  }
 
   if (!Array.isArray(listing.photos)) {
     listing.photos = [];
@@ -1943,684 +2074,16 @@ app.post('/api/auth/magic-link/verify', async (req, res) => {
   return res.status(400).json({ error: 'Magic-link verification not available with current provider' });
 });
 
-app.get('/api/bookings/:id', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
 
-  const booking = await getBookingById(req.params.id);
-  if (!booking) return res.status(404).json({ error: 'Booking not found' });
-
-  const isRenter = booking.renterUserId === session.userId;
-  const isOwner = booking.product?.providerId === buildOwnerProviderId(session.email) || booking.ownerEmail === session.email;
-
-  if (!isRenter && !isOwner && session.email !== 'admin@gearspot') {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
-  const sanitized = { ...booking };
-  if (!isOwner && sanitized.handoffCode) {
-    sanitized.handoffCode = '***';
-  }
-  
-  return res.json(sanitized);
-});
-
-app.post('/api/bookings/:id/handoff/confirm', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const { actor } = req.body || {};
-  if (!['owner', 'renter'].includes(actor)) {
-    return res.status(400).json({ error: 'actor must be owner or renter' });
-  }
-
-  const booking = await getBookingById(req.params.id);
-  if (!booking) return res.status(404).json({ error: 'Booking not found' });
-
-  if (actor === 'owner') {
-    if (booking.ownerEmail !== session.email && booking.product?.providerId !== buildOwnerProviderId(session.email)) {
-      return res.status(403).json({ error: 'Not the owner' });
-    }
-    booking.handoffConfirmedByOwnerAt = new Date().toISOString();
-  } else {
-    if (booking.renterUserId !== session.userId) {
-      return res.status(403).json({ error: 'Not the renter' });
-    }
-    booking.handoffConfirmedByRenterAt = new Date().toISOString();
-  }
-
-  if (booking.handoffConfirmedByOwnerAt && booking.handoffConfirmedByRenterAt) {
-    booking.bookingStage = BOOKING_STAGE.IN_USE;
-  }
-
-  await appendAuthAuditLog('booking_handoff_confirmed', req, {
-    bookingId: booking.id,
-    actor
+// Serve static frontend files if 'dist' folder exists (for production)
+const distPath = path.join(__dirname, '..', 'dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  // Catch-all route to serve index.html for any non-API request
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
   });
-
-  await saveBookings(booking);
-  return res.json(booking);
-});
-
-app.post('/api/bookings/:id/evidence', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const { phase, photos } = req.body || {};
-  if (!['before', 'after'].includes(phase) || !Array.isArray(photos)) {
-    return res.status(400).json({ error: 'phase (before|after) and photos array required' });
-  }
-
-  const booking = await getBookingById(req.params.id);
-  if (!booking) return res.status(404).json({ error: 'Booking not found' });
-
-  const isRenter = booking.renterUserId === session.userId;
-  const isOwner = booking.product?.providerId === buildOwnerProviderId(session.email) || booking.ownerEmail === session.email;
-
-  if (phase === 'before' && !isOwner) {
-    return res.status(403).json({ error: 'Only owner can submit before photos' });
-  }
-  if (phase === 'after' && !isRenter) {
-    return res.status(403).json({ error: 'Only renter can submit after photos' });
-  }
-
-  if (phase === 'before') {
-    booking.evidencePhotosBefore = photos.slice(0, 10);
-  } else {
-    booking.evidencePhotosAfter = photos.slice(0, 10);
-  }
-
-  await saveBookings(booking);
-  return res.json({ ok: true, message: `${phase === 'before' ? 'Before' : 'After'} photos stored` });
-});
-
-app.post('/api/bookings/:id/reviews', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const { actor, rating, comment } = req.body || {};
-  if (!['owner', 'renter'].includes(actor) || !rating || rating < 1 || rating > 5) {
-    return res.status(400).json({ error: 'actor, rating (1-5), and comment required' });
-  }
-
-  const booking = await getBookingById(req.params.id);
-  if (!booking) return res.status(404).json({ error: 'Booking not found' });
-
-  if (booking.bookingStage !== BOOKING_STAGE.COMPLETED) {
-    return res.status(400).json({ error: 'Booking must be completed before review' });
-  }
-
-  const now = new Date().toISOString();
-  let shouldReveal = false;
-
-  if (actor === 'owner') {
-    if (booking.product?.providerId !== buildOwnerProviderId(session.email) && booking.ownerEmail !== session.email) {
-      return res.status(403).json({ error: 'Not the owner' });
-    }
-    booking.reviewFlow.ownerReview = { rating, comment };
-    booking.reviewFlow.ownerReviewSubmittedAt = now;
-  } else {
-    if (booking.renterUserId !== session.userId) {
-      return res.status(403).json({ error: 'Not the renter' });
-    }
-    booking.reviewFlow.renterReview = { rating, comment };
-    booking.reviewFlow.renterReviewSubmittedAt = now;
-  }
-
-  if (booking.reviewFlow.ownerReviewSubmittedAt && booking.reviewFlow.renterReviewSubmittedAt) {
-    shouldReveal = true;
-    booking.reviewFlow.visibility = 'visible';
-  }
-
-  await appendAuthAuditLog('booking_review_submitted', req, {
-    bookingId: booking.id,
-    actor,
-    rating
-  });
-
-  await saveBookings(booking);
-  return res.json({
-    ok: true,
-    message: 'Review stored',
-    visibility: booking.reviewFlow.visibility,
-    revealed: shouldReveal
-  });
-});
-
-app.get('/api/bookings/:id/reviews', async (req, res) => {
-  const booking = await getBookingById(req.params.id);
-  if (!booking) return res.status(404).json({ error: 'Booking not found' });
-
-  const reviews = [];
-
-  if (booking.reviewFlow.ownerReview) {
-    reviews.push({
-      id: `rev-owner-${booking.id}`,
-      actor: 'owner',
-      rating: booking.reviewFlow.ownerReview.rating,
-      comment: booking.reviewFlow.ownerReview.comment,
-      visibility: booking.reviewFlow.visibility
-    });
-  }
-
-  if (booking.reviewFlow.renterReview) {
-    reviews.push({
-      id: `rev-renter-${booking.id}`,
-      actor: 'renter',
-      rating: booking.reviewFlow.renterReview.rating,
-      comment: booking.reviewFlow.renterReview.comment,
-      visibility: booking.reviewFlow.visibility
-    });
-  }
-
-  return res.json(reviews);
-});
-
-app.get('/api/bookings/:id/disputes', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const booking = await getBookingById(req.params.id);
-  if (!booking) return res.status(404).json({ error: 'Booking not found' });
-
-  if (booking.email !== session.email && booking.renterUserId !== session.userId) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
-  const disputes = booking.disputes || [];
-  return res.json(disputes);
-});
-
-app.post('/api/payments/deposit', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const { bookingId, depositAmount } = req.body || {};
-  if (!bookingId || !depositAmount || depositAmount <= 0) {
-    return res.status(400).json({ error: 'bookingId and depositAmount required' });
-  }
-
-  const booking = await getBookingById(bookingId);
-  if (!booking) return res.status(404).json({ error: 'Booking not found' });
-
-  if (booking.email !== session.email) {
-    return res.status(403).json({ error: 'Not the booking owner' });
-  }
-
-  // For development, create mock payment intent
-  if (!stripe) {
-    return res.json({
-      ok: true,
-      clientSecret: `pi_mock_${Date.now()}`,
-      publishableKey: 'pk_test_mock',
-      amount: Math.round(depositAmount * 100),
-      currency: 'eur',
-      status: 'requires_payment_method'
-    });
-  }
-
-  // Production: create real Stripe payment intent
-  try {
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(depositAmount * 100),
-      currency: 'eur',
-      description: `Deposit for booking ${bookingId}`,
-      metadata: {
-        bookingId,
-        userEmail: session.email
-      }
-    });
-
-    return res.json({
-      ok: true,
-      clientSecret: paymentIntent.client_secret,
-      publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || 'pk_test_mock',
-      amount: paymentIntent.amount,
-      currency: paymentIntent.currency,
-      status: paymentIntent.status
-    });
-  } catch (error) {
-    console.error('Stripe error:', error);
-    return res.status(400).json({ error: 'Payment setup failed: ' + error.message });
-  }
-});
-
-app.post('/api/payments/deposit/confirm', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const { bookingId, paymentIntentId } = req.body || {};
-  if (!bookingId || !paymentIntentId) {
-    return res.status(400).json({ error: 'bookingId and paymentIntentId required' });
-  }
-
-  const booking = await getBookingById(bookingId);
-  if (!booking) return res.status(404).json({ error: 'Booking not found' });
-
-  if (booking.email !== session.email) {
-    return res.status(403).json({ error: 'Not the booking owner' });
-  }
-
-  // For development, mark deposit as held
-  if (!stripe) {
-    booking.depositStatus = 'held';
-    booking.depositHeldAt = new Date().toISOString();
-    booking.depositPaymentIntentId = paymentIntentId;
-    const allBookings = await readBookings();
-    const index = allBookings.findIndex((b) => b.id === bookingId);
-    if (index >= 0) {
-      allBookings[index] = booking;
-      await saveBookings(allBookings);
-    }
-    return res.json({ ok: true, message: 'Deposit confirmed (mock)', depositStatus: 'held' });
-  }
-
-  // Production: verify payment intent
-  try {
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-    if (paymentIntent.status !== 'succeeded') {
-      return res.status(400).json({ error: 'Payment not completed' });
-    }
-
-    booking.depositStatus = 'held';
-    booking.depositHeldAt = new Date().toISOString();
-    booking.depositPaymentIntentId = paymentIntentId;
-
-    const allBookings = await readBookings();
-    const index = allBookings.findIndex((b) => b.id === bookingId);
-    if (index >= 0) {
-      allBookings[index] = booking;
-      await saveBookings(allBookings);
-    }
-
-    return res.json({ ok: true, message: 'Deposit confirmed', depositStatus: 'held' });
-  } catch (error) {
-    console.error('Stripe verification error:', error);
-    return res.status(400).json({ error: 'Payment verification failed' });
-  }
-});
-
-app.post('/api/pilot/invite-codes', async (req, res) => {
-  if (req.method === 'POST') {
-    if (!isAdminAuthorized(req)) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-
-    const { email } = req.body || {};
-    if (!isValidEmail(email)) {
-      return res.status(400).json({ error: 'Valid email required' });
-    }
-
-    const code = generateInviteCode();
-    const inviteCode = {
-      id: `invite-${Date.now()}`,
-      code,
-      email: email.toLowerCase(),
-      used: false,
-      usedBy: null,
-      usedAt: null,
-      createdAt: new Date().toISOString()
-    };
-
-    const allCodes = await readInviteCodes();
-    allCodes.push(inviteCode);
-    await saveInviteCodes(allCodes);
-
-    return res.json(inviteCode);
-  }
-
-  // GET - list codes (admin only)
-  if (!isAdminAuthorized(req)) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
-  const allCodes = await readInviteCodes();
-  return res.json(allCodes);
-});
-
-app.post('/api/pilot/validate-invite', async (req, res) => {
-  const { code } = req.body || {};
-  if (!code || String(code).length < 8) {
-    return res.status(400).json({ error: 'Valid invite code required' });
-  }
-
-  const allCodes = await readInviteCodes();
-  const inviteCode = allCodes.find((c) => c.code === String(code).toUpperCase());
-
-  if (!inviteCode) {
-    return res.json({ valid: false, message: 'Invite code not found' });
-  }
-
-  if (inviteCode.used) {
-    return res.json({ valid: false, message: 'Invite code already used' });
-  }
-
-  return res.json({ valid: true, message: 'Invite code is valid', email: inviteCode.email });
-});
-
-app.get('/api/notifications', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const allNotifications = await readNotifications();
-  const userNotifications = allNotifications
-    .filter((n) => n.userEmail === session.email)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 50);
-
-  return res.json(userNotifications);
-});
-
-app.post('/api/notifications/:id/read', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const allNotifications = await readNotifications();
-  const notification = allNotifications.find((n) => n.id === req.params.id);
-
-  if (!notification) {
-    return res.status(404).json({ error: 'Notification not found' });
-  }
-
-  if (notification.userEmail !== session.email) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
-  notification.read = true;
-  await saveNotifications(allNotifications);
-  return res.json({ ok: true });
-});
-
-app.get('/api/export/bookings', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const allBookings = await readBookings();
-  const userBookings = allBookings.filter((b) => b.email === session.email);
-
-  // Build CSV
-  const headers = ['id', 'productName', 'renterEmail', 'stage', 'depositStatus', 'createdAt', 'completedAt', 'disputes'];
-  const rows = userBookings.map((b) => [
-    b.id,
-    b.product?.name || 'N/A',
-    b.email,
-    b.bookingStage || 'unknown',
-    b.depositStatus || 'not_required',
-    b.createdAt || '',
-    b.completedAt || '',
-    (b.disputes || []).length
-  ]);
-
-  const csv = [headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="bookings-${Date.now()}.csv"`);
-  return res.send(csv);
-});
-
-app.get('/api/export/metrics', async (req, res) => {
-  if (!isAdminAuthorized(req)) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
-  const allBookings = await readBookings();
-  const metrics = computePilotMetrics(allBookings, 30);
-
-  // Build CSV with metrics
-  const csv = [
-    'Metric,Value,Unit',
-    `Total Bookings,${metrics.totals.bookings},count`,
-    `Completed Bookings,${metrics.totals.completedBookings},count`,
-    `Disputed Bookings,${metrics.totals.disputedBookings},count`,
-    `Completion Rate,${metrics.metrics.bookingCompletionRatePct},percent`,
-    `Dispute Rate,${metrics.metrics.disputeRatePct},percent`,
-    `Average Review Score,${metrics.metrics.averageReviewScore || 'N/A'},rating`,
-    `Average Resolution Hours,${metrics.metrics.averageResolutionHours || 'N/A'},hours`
-  ].join('\n');
-
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="metrics-${Date.now()}.csv"`);
-  return res.send(csv);
-});
-
-// Profile endpoints
-app.get('/api/profiles/renter', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const allBookings = await readBookings();
-  const userBookings = allBookings.filter((b) => b.email === session.email);
-  const completedBookings = userBookings.filter((b) => b.bookingStage === 'completed');
-  const reviewsData = userBookings
-    .flatMap((b) => (b.reviewFlow?.renterReview ? [b.reviewFlow.renterReview] : []))
-    .filter((r) => r && r.rating);
-
-  const avgRating = reviewsData.length > 0
-    ? (reviewsData.reduce((sum, r) => sum + (r.rating || 0), 0) / reviewsData.length).toFixed(1)
-    : null;
-
-  return res.json({
-    email: session.email,
-    fullName: session.fullName || 'User',
-    phone: session.phone || '',
-    bio: session.bio || '',
-    totalBookings: userBookings.length,
-    completedBookings: completedBookings.length,
-    averageRating: avgRating,
-    disputes: userBookings.filter((b) => b.bookingStage === 'disputed').length
-  });
-});
-
-app.patch('/api/profiles/renter', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const { fullName, phone, bio } = req.body || {};
-  session.fullName = fullName || session.fullName;
-  session.phone = phone || session.phone;
-  session.bio = bio || session.bio;
-
-  return res.json({
-    email: session.email,
-    fullName: session.fullName,
-    phone: session.phone,
-    bio: session.bio
-  });
-});
-
-app.get('/api/profiles/host', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const allListings = await readOwnerListings();
-  const userListings = allListings.filter((l) => l.ownerEmail === session.email);
-  const allBookings = await readBookings();
-  const userBookings = allBookings.filter((b) => b.ownerEmail === session.email);
-
-  return res.json({
-    email: session.email,
-    companyName: session.companyName || 'Company',
-    description: session.description || '',
-    totalListings: userListings.length,
-    totalBookings: userBookings.length,
-    responseRate: 95,
-    verifiedAt: session.verifiedAt ? new Date(session.verifiedAt).toISOString() : null
-  });
-});
-
-app.patch('/api/profiles/host', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const { companyName, description } = req.body || {};
-  session.companyName = companyName || session.companyName;
-  session.description = description || session.description;
-
-  return res.json({
-    email: session.email,
-    companyName: session.companyName,
-    description: session.description
-  });
-});
-
-// Messaging endpoints
-let messages = [];
-async function readMessages() {
-  return readStoreList(STORE_KEYS.messages, messages);
 }
-
-async function saveMessages(items) {
-  const snapshot = Array.isArray(items) ? [...items] : [];
-  messages = snapshot;
-  await writeStoreList(STORE_KEYS.messages || 'gearspot:messages', snapshot);
-}
-
-app.get('/api/messages', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const bookingId = req.query.bookingId;
-  if (!bookingId) return res.status(400).json({ error: 'bookingId required' });
-
-  const allMessages = await readMessages();
-  const bookingMessages = allMessages
-    .filter((m) => m.bookingId === bookingId)
-    .map((m) => ({
-      ...m,
-      isOwn: m.senderEmail === session.email
-    }))
-    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-
-  return res.json(bookingMessages);
-});
-
-app.post('/api/messages', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const { bookingId, text } = req.body || {};
-  if (!bookingId || !text) return res.status(400).json({ error: 'bookingId and text required' });
-
-  const message = {
-    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    bookingId,
-    senderEmail: session.email,
-    text: text.trim(),
-    createdAt: new Date().toISOString()
-  };
-
-  const allMessages = await readMessages();
-  allMessages.push(message);
-  await saveMessages(allMessages);
-
-  return res.json(message);
-});
-
-// Booking history endpoint
-app.get('/api/bookings/history', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const allBookings = await readBookings();
-  const userBookings = allBookings.filter((b) => b.email === session.email);
-  return res.json(userBookings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-});
-
-// Payment history endpoint
-app.get('/api/payments/history', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const allBookings = await readBookings();
-  const userBookings = allBookings.filter((b) => b.email === session.email);
-
-  const payments = userBookings.flatMap((b) => [
-    {
-      id: `payment-${b.id}`,
-      description: `Booking: ${b.product?.name || 'Product'}`,
-      amount: b.depositAmount || 0,
-      type: 'charge',
-      status: b.depositStatus === 'held' ? 'completed' : 'pending',
-      createdAt: b.createdAt
-    }
-  ]);
-
-  const summary = {
-    totalEarnings: payments.filter((p) => p.type === 'charge').reduce((sum, p) => sum + p.amount, 0),
-    totalRefunds: 0,
-    netEarnings: payments.filter((p) => p.type === 'charge').reduce((sum, p) => sum + p.amount, 0)
-  };
-
-  return res.json({ payments, summary });
-});
-
-// Booking cancellation endpoint
-app.post('/api/bookings/:id/cancel', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const allBookings = await readBookings();
-  const booking = allBookings.find((b) => b.id === req.params.id);
-  if (!booking || booking.email !== session.email) {
-    return res.status(404).json({ error: 'Booking not found' });
-  }
-
-  const { reason, feedback } = req.body || {};
-  booking.cancelledAt = new Date().toISOString();
-  booking.cancellationReason = reason || 'User cancelled';
-  booking.cancellationFeedback = feedback || '';
-  booking.bookingStage = 'cancelled';
-
-  const index = allBookings.findIndex((b) => b.id === req.params.id);
-  if (index >= 0) {
-    allBookings[index] = booking;
-    await saveBookings(allBookings);
-  }
-
-  return res.json({ ok: true, message: 'Booking cancelled', bookingStage: 'cancelled' });
-});
-
-// Product search endpoint
-app.get('/api/products/search', async (req, res) => {
-  const query = (req.query.q || '').trim().toLowerCase();
-  const allProducts = getPublicProducts();
-
-  if (!query) {
-    return res.json(allProducts.slice(0, 20));
-  }
-
-  const filtered = allProducts.filter((p) =>
-    p.name.toLowerCase().includes(query) ||
-    (p.description || '').toLowerCase().includes(query) ||
-    (p.category || '').toLowerCase().includes(query)
-  );
-
-  return res.json(filtered.slice(0, 20));
-});
-
-// Host onboarding endpoint
-app.post('/api/host/onboarding', async (req, res) => {
-  const session = getSession(req);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
-
-  const { companyName, description, bankAccount, termsAccepted, liabilityAccepted } = req.body || {};
-
-  if (!companyName || !bankAccount || !termsAccepted || !liabilityAccepted) {
-    return res.status(400).json({ error: 'All fields required' });
-  }
-
-  session.companyName = companyName;
-  session.description = description || '';
-  session.bankAccount = bankAccount;
-  session.onboardingCompletedAt = new Date().toISOString();
-  session.isHost = true;
-
-  return res.json({
-    ok: true,
-    message: 'Host onboarding submitted',
-    onboardingCompletedAt: session.onboardingCompletedAt
-  });
-});
 
 app.use((error, req, res, next) => {
   console.error(`[api] Unhandled error requestId=${req.requestId || 'unknown'}`, error);
@@ -2635,5 +2098,146 @@ if (require.main === module) {
     console.log(`Mock API server running on http://localhost:${port}`);
   });
 }
+
+
+app.get('/api/notifications', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  const notifs = await readNotifications();
+  const userNotifs = notifs.filter(n => n.userId === session.userId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  res.json(userNotifs);
+});
+
+app.patch('/api/notifications/:id/read', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  const notifs = await readNotifications();
+  const notif = notifs.find(n => n.id === req.params.id && n.userId === session.userId);
+  if (notif) {
+    notif.read = true;
+    await saveNotifications(notifs);
+    return res.json(notif);
+  }
+  res.status(404).json({error: 'Not found'});
+});
+
+
+// Stripe Webhook Endpoint
+
+
+// --- Favorites ---
+app.get('/api/favorites', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  let usersObj = await getStoreValue('gearspot:users');
+  if (!usersObj) usersObj = {};
+  if (!usersObj[session.userId]) usersObj[session.userId] = { favorites: [] };
+  res.json(usersObj[session.userId].favorites || []);
+});
+
+app.post('/api/favorites', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  const { productId } = req.body;
+  if (!productId) return res.status(400).json({ error: 'Missing productId' });
+
+  let usersObj = await getStoreValue('gearspot:users');
+  if (!usersObj) usersObj = {};
+
+  if (!usersObj[session.userId]) usersObj[session.userId] = { favorites: [] };
+  if (!usersObj[session.userId].favorites) usersObj[session.userId].favorites = [];
+
+  if (!usersObj[session.userId].favorites.includes(productId)) {
+    usersObj[session.userId].favorites.push(productId);
+    await setStoreValue('gearspot:users', usersObj);
+  }
+  res.json(usersObj[session.userId].favorites);
+});
+
+app.delete('/api/favorites/:id', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  let usersObj = await getStoreValue('gearspot:users');
+  if (!usersObj) usersObj = {};
+
+  if (!usersObj[session.userId] || !usersObj[session.userId].favorites) {
+    return res.json([]);
+  }
+
+  usersObj[session.userId].favorites = usersObj[session.userId].favorites.filter(id => id !== req.params.id);
+  await setStoreValue('gearspot:users', usersObj);
+  res.json(usersObj[session.userId].favorites);
+});
+
+// --- Chat ---
+app.get('/api/bookings/:id/messages', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  const allBookings = await readBookings();
+  const booking = allBookings.find(b => b.id === req.params.id);
+  if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+  if (booking.renterUserId !== session.userId && session.email !== 'admin@gearspot.fi') {
+      if (booking.product.providerId !== session.userId && !(booking.product.providerId || '').includes(session.email)) {
+         return res.status(403).json({ error: 'Forbidden' });
+      }
+  }
+
+  res.json(booking.messages || []);
+});
+
+app.post('/api/bookings/:id/messages', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  const allBookings = await readBookings();
+  const booking = allBookings.find(b => b.id === req.params.id);
+  if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+  // Authorization check (same as GET)
+  if (booking.renterUserId !== session.userId && session.email !== 'admin@gearspot.fi') {
+      if (booking.product.providerId !== session.userId && !(booking.product.providerId || '').includes(session.email)) {
+         return res.status(403).json({ error: 'Forbidden' });
+      }
+  }
+
+  if (!booking.messages) booking.messages = [];
+
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: 'Message text is required' });
+
+  const newMessage = {
+      id: `msg-${Date.now()}`,
+      senderId: session.userId,
+      senderName: session.email.split('@')[0],
+      text,
+      createdAt: new Date().toISOString()
+  };
+
+  booking.messages.push(newMessage);
+  await saveBookings(allBookings);
+
+  res.status(201).json(newMessage);
+});
+
+// --- User Profile fallback from users to sqlite ---
+app.patch('/api/me', async (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { name, phone } = req.body;
+
+  let usersObj = await getStoreValue('gearspot:users');
+  if (!usersObj) usersObj = {};
+  if (!usersObj[session.userId]) {
+      usersObj[session.userId] = { id: session.userId, email: session.email };
+  }
+
+  if (name !== undefined) usersObj[session.userId].name = name;
+  if (phone !== undefined) usersObj[session.userId].phone = phone;
+
+  await setStoreValue('gearspot:users', usersObj);
+  return res.json(usersObj[session.userId]);
+});
 
 module.exports = app;

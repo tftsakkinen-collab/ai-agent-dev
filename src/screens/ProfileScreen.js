@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { SafeAreaView, View, Text, FlatList, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { SafeAreaView, View, Text, FlatList, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput, Image } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
 import {
   claimBookingDeposit,
@@ -16,9 +16,14 @@ import {
 
 export default function ProfileScreen({ navigation }) {
   const [bookings, setBookings] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loginRequired, setLoginRequired] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [favorites, setFavorites] = useState([]);
 
   useEffect(() => {
     fetchMyData();
@@ -26,12 +31,21 @@ export default function ProfileScreen({ navigation }) {
 
   const fetchMyData = async () => {
     try {
-      const [profileData, bookingsData, reviewsData] = await Promise.all([
+      const notifsResponse = await fetchJson('/api/notifications');
+      if (Array.isArray(notifsResponse)) setNotifications(notifsResponse);
+    } catch (e) { console.warn(e); }
+
+    try {
+      const [profileData, bookingsData, reviewsData, favoritesData] = await Promise.all([
         getProfile(),
         fetchJson('/api/bookings'),
-        fetchJson('/api/reviews/renter')
+        fetchJson('/api/reviews/renter'),
+        fetchJson('/api/favorites').catch(() => []),
       ]);
       setProfile(profileData);
+      setEditName(profileData.name || '');
+      setEditPhone(profileData.phone || '');
+      setFavorites(favoritesData || []);
       setBookings(bookingsData);
       setReviews(reviewsData);
       setLoginRequired(false);
@@ -40,8 +54,25 @@ export default function ProfileScreen({ navigation }) {
       setProfile(null);
       setBookings([]);
       setReviews([]);
+      setFavorites([]);
+      setFavorites([]);
     }
   };
+
+  const handleSaveProfile = async () => {
+    try {
+      await fetchJson('/api/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editName, phone: editPhone })
+      });
+      setProfile({ ...profile, name: editName, phone: editPhone });
+      setIsEditing(false);
+    } catch (e) {
+      Alert.alert('Virhe', 'Profiilin päivitys epäonnistui');
+    }
+  };
+
 
   const handleLogout = async () => {
     await logout();
@@ -258,10 +289,11 @@ export default function ProfileScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.container}>
         <ScreenHeader
           title="Profiili"
-          subtitle={profile ? `Tervehdys, ${profile.email}` : 'Kirjaudu sisään nähdäksesi varauksesi'}
+          subtitle={profile ? `Tervehdys, ${profile.name || profile.email}` : 'Kirjaudu sisään nähdäksesi varauksesi'}
           actionLabel={profile ? 'Kirjaudu ulos' : 'Kirjaudu'}
           onAction={profile ? handleLogout : () => navigation.navigate('Auth')}
         />
+
         {loginRequired ? (
           <View style={styles.card}>
             <Text style={styles.info}>Kirjaudu sisään nähdäksesi varaukset ja arvostelut.</Text>
@@ -272,6 +304,57 @@ export default function ProfileScreen({ navigation }) {
         ) : (
           <>
             <View style={styles.card}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+                <Text style={styles.sectionTitle}>Omat tiedot</Text>
+                <TouchableOpacity onPress={() => isEditing ? handleSaveProfile() : setIsEditing(true)}>
+                  <Text style={{ color: '#15948b', fontWeight: 'bold' }}>{isEditing ? 'Tallenna' : 'Muokkaa'}</Text>
+                </TouchableOpacity>
+              </View>
+              {isEditing ? (
+                <View>
+                  <Text style={styles.inputLabel}>Nimi</Text>
+                  <TextInput style={styles.input} value={editName} onChangeText={setEditName} placeholder="Etunimi Sukunimi" />
+                  <Text style={styles.inputLabel}>Puhelinnumero</Text>
+                  <TextInput style={styles.input} value={editPhone} onChangeText={setEditPhone} placeholder="040 123 4567" keyboardType="phone-pad" />
+                </View>
+              ) : (
+                <View>
+                  <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 10}}>
+                     <Image source={{uri: profile?.avatarUrl || 'https://via.placeholder.com/150'}} style={{width: 50, height: 50, borderRadius: 25, marginRight: 15}} />
+                     <View>
+                       <Text style={styles.info}>Nimi: {profile?.name || 'Ei asetettu'}</Text>
+                       <Text style={styles.info}>Puhelin: {profile?.phone || 'Ei asetettu'}</Text>
+                     </View>
+                  </View>
+                  <Text style={styles.info}>Sähköposti: {profile?.email}</Text>
+                </View>
+              )}
+            </View>
+
+            {favorites && favorites.length > 0 && (
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Suosikit</Text>
+                {favorites.map(favId => (
+                  <TouchableOpacity key={favId} style={styles.item} onPress={() => navigation.navigate('ProductDetail', { product: {id: favId} })}>
+                    <Text style={styles.itemTitle}>{favId}</Text>
+                    <Text style={styles.itemMeta}>Tallennettu suosikkeihin</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <View style={styles.card}>
+            {notifications.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Ilmoitukset</Text>
+                {notifications.map(n => (
+                  <View key={n.id} style={[styles.itemCard, !n.read && { borderColor: '#1abc9c', borderWidth: 2 }]}>
+                    <Text style={styles.itemTitle}>{n.message}</Text>
+                    <Text style={styles.itemMeta}>{new Date(n.createdAt).toLocaleString()}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
               <Text style={styles.sectionTitle}>Omat varaukset</Text>
               <FlatList
                 data={bookings}
@@ -281,12 +364,18 @@ export default function ProfileScreen({ navigation }) {
                   <View style={styles.item}>
                     <Text style={styles.itemTitle}>{item.product?.name || item.productId}</Text>
                     <Text style={styles.itemMeta}>{item.name} — {item.email}</Text>
+                    {item.selectedDate && item.selectedTime ? (
+                      <Text style={styles.itemMeta}>Aika: {item.selectedDate} klo {item.selectedTime}</Text>
+                    ) : null}
                     <Text style={styles.itemMeta}>Varaus: {item.bookingStatus} · Maksu: {item.paymentStatus}</Text>
                     <Text style={styles.itemMeta}>Stage: {item.bookingStage || 'approved'}</Text>
                     <Text style={styles.itemMeta}>Pantti: {item.depositStatus || 'not_required'} ({item.depositAmount || 0} EUR)</Text>
                     {item.reviewFlow ? <Text style={styles.itemMeta}>Review näkyvyys: {item.reviewFlow.visibility}</Text> : null}
                     <Text style={styles.itemMeta}>{item.paymentSummary}</Text>
                     {item.refundedAt ? <Text style={styles.itemMeta}>Palautettu: {new Date(item.refundedAt).toLocaleString()}</Text> : null}
+                    <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('Chat', { bookingId: item.id, productTitle: item.product?.name })}>
+                        <Text style={styles.secondaryButtonText}>Viestit</Text>
+                      </TouchableOpacity>
                     {item.paymentStatus === 'paid' ? (
                       <TouchableOpacity style={styles.secondaryButton} onPress={() => handleRefund(item.id)}>
                         <Text style={styles.secondaryButtonText}>Tee mock-palautus</Text>
@@ -336,7 +425,9 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: '800', marginBottom: 16, color: '#0f2f3d' },
   card: { backgroundColor: '#fff', borderRadius: 18, padding: 18, marginBottom: 16, borderWidth: 1, borderColor: '#e3eaef' },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12, color: '#0f2f3d' },
-  info: { color: '#556b7a', marginBottom: 16, lineHeight: 22 },
+  info: { color: '#556b7a', marginBottom: 8, lineHeight: 22 },
+  inputLabel: { fontWeight: '700', marginBottom: 4, color: '#0f2f3d' },
+  input: { borderWidth: 1, borderColor: '#d7dfe6', borderRadius: 8, padding: 10, marginBottom: 12, backgroundColor: '#f8fbfc' },
   item: { paddingVertical: 10, borderBottomWidth: 1, borderColor: '#f1f4f6' },
   itemTitle: { fontWeight: '700', marginBottom: 4, color: '#0f2f3d' },
   itemMeta: { color: '#556b7a', lineHeight: 20 },
@@ -360,5 +451,9 @@ const styles = StyleSheet.create({
   microButtonText: { color: '#284451', fontSize: 12, fontWeight: '700' },
   microButtonWarn: { borderColor: '#f2b4a9', backgroundColor: '#fff6f3' },
   microButtonWarnText: { color: '#b33b23', fontSize: 12, fontWeight: '700' },
-  emptyText: { color: '#777', marginTop: 8 }
+  emptyText: { color: '#777', marginTop: 8 },
+
+  section: { marginBottom: 20 },
+  itemCard: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#e3eaef' },
+
 });

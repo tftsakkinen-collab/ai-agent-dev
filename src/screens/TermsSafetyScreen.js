@@ -11,6 +11,8 @@ const safetyChecklist = [
 
 export default function TermsSafetyScreen({ navigation, route }) {
   const product = route?.params?.product || null;
+  const selectedDate = route?.params?.selectedDate || null;
+  const selectedTime = route?.params?.selectedTime || null;
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [safetyAccepted, setSafetyAccepted] = useState(false);
 
@@ -44,7 +46,7 @@ export default function TermsSafetyScreen({ navigation, route }) {
           <TouchableOpacity
             style={[styles.primaryButton, !canContinue && styles.buttonDisabled]}
             disabled={!canContinue}
-            onPress={() => navigation.navigate('Booking', { product, termsAccepted: true, safetyAccepted: true })}
+            onPress={() => navigation.navigate('Booking', { product, termsAccepted: true, safetyAccepted: true, selectedDate, selectedTime })}
           >
             <Text style={styles.primaryButtonText}>Jatka varaukseen</Text>
           </TouchableOpacity>

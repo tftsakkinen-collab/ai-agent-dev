@@ -3,7 +3,7 @@ import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, Touchable
 import ScreenHeader from '../components/ScreenHeader';
 import { createOwnerListing, getOwnerListings, updateOwnerListing } from '../lib/api';
 
-export default function BecomeHostScreen({ navigation }) {
+export default function BecomeHostScreen() {
   const [boardName, setBoardName] = useState('');
   const [description, setDescription] = useState('');
   const [locationName, setLocationName] = useState('Oulu');

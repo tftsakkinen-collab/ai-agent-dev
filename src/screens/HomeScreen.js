@@ -24,6 +24,32 @@ export default function HomeScreen({ navigation }) {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [searchText, setSearchText] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState('Kaikki');
+  const [sortOrder, setSortOrder] = useState('Suosituimmat');
+
+  const locations = ['Kaikki', 'Nallikari', 'Hietasaari', 'Kuivasjärvi'];
+  const sortOptions = ['Suosituimmat', 'Halvin ensin', 'Kallein ensin'];
+
+  let filteredProducts = [...products].filter(p => {
+    if (selectedLocation !== 'Kaikki') {
+      if (p.locationName !== selectedLocation && !(selectedLocation === 'Nallikari' && p.searchTerms && p.searchTerms.includes('nallikari')) && !(selectedLocation === 'Hietasaari' && p.searchTerms && p.searchTerms.includes('hietasaari')) && !(selectedLocation === 'Kuivasjärvi' && p.searchTerms && p.searchTerms.includes('kuivasjärvi'))) return false;
+    }
+    return true;
+  });
+
+  if (sortOrder === 'Halvin ensin') {
+    filteredProducts = filteredProducts.sort((a, b) => {
+      const priceA = parseInt((a.price || '').replace(/[^0-9]/g, ''));
+      const priceB = parseInt((b.price || '').replace(/[^0-9]/g, ''));
+      return priceA - priceB;
+    });
+  } else if (sortOrder === 'Kallein ensin') {
+    filteredProducts = filteredProducts.sort((a, b) => {
+      const priceA = parseInt((a.price || '').replace(/[^0-9]/g, ''));
+      const priceB = parseInt((b.price || '').replace(/[^0-9]/g, ''));
+      return priceB - priceA;
+    });
+  }
 
   useEffect(() => {
     fetchJson('/api/products')
@@ -108,8 +134,45 @@ export default function HomeScreen({ navigation }) {
           ))}
         </View>
 
+
+        <View style={styles.locationFilterRow}>
+          {sortOptions.map(sort => (
+            <TouchableOpacity
+              key={sort}
+              style={[styles.sortFilterBtn, sortOrder === sort && styles.sortFilterBtnActive]}
+              onPress={() => setSortOrder(sort)}
+            >
+              <Text style={[styles.sortFilterText, sortOrder === sort && styles.sortFilterTextActive]}>{sort}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+
+        <View style={styles.locationFilterRow}>
+          {locations.map(loc => (
+            <TouchableOpacity
+              key={loc}
+              style={[styles.locationFilterBtn, selectedLocation === loc && styles.locationFilterBtnActive]}
+              onPress={() => setSelectedLocation(loc)}
+            >
+              <Text style={[styles.locationFilterText, selectedLocation === loc && styles.locationFilterTextActive]}>{loc}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={styles.locationFilterRow}>
+          {sortOptions.map(sort => (
+            <TouchableOpacity
+              key={sort}
+              style={[styles.sortFilterBtn, sortOrder === sort && styles.sortFilterBtnActive]}
+              onPress={() => setSortOrder(sort)}
+            >
+              <Text style={[styles.sortFilterText, sortOrder === sort && styles.sortFilterTextActive]}>{sort}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <Text style={styles.sectionTitle}>Suositut SUP-laudat Oulussa</Text>
-        <ProductList products={products} navigation={navigation} />
+        <ProductList products={filteredProducts} navigation={navigation} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -137,5 +200,14 @@ const styles = StyleSheet.create({
   categoryRow: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap' },
   categoryCard: { width: '48%', backgroundColor: '#fff', borderRadius: 18, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#e5ecf1' },
   categoryTitle: { fontSize: 16, fontWeight: '800', marginBottom: 8, color: '#0f2f3d' },
-  categoryLabel: { fontSize: 14, color: '#556b7a', lineHeight: 20 }
+  categoryLabel: { fontSize: 14, color: '#556b7a', lineHeight: 20 },
+  locationFilterRow: { flexDirection: 'row', justifyContent: 'center', marginBottom: 20, gap: 10, flexWrap: 'wrap' },
+  locationFilterBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#eef2f5', borderWidth: 1, borderColor: '#d7dfe6' },
+  locationFilterBtnActive: { backgroundColor: '#15948b', borderColor: '#15948b' },
+  locationFilterText: { color: '#556b7a', fontWeight: '600' },
+  locationFilterTextActive: { color: '#ffffff', fontWeight: 'bold' },
+  sortFilterBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 15, backgroundColor: '#f0f4f8', borderWidth: 1, borderColor: '#d7dfe6' },
+  sortFilterBtnActive: { backgroundColor: '#284451', borderColor: '#284451' },
+  sortFilterText: { color: '#556b7a', fontSize: 13, fontWeight: '600' },
+  sortFilterTextActive: { color: '#ffffff', fontWeight: 'bold' }
 });
