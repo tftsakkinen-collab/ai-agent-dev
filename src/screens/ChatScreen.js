@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SafeAreaView, View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import ScreenHeader from '../components/ScreenHeader';
-import { fetchJson } from '../lib/api';
+import { fetchJson, getProfile } from '../lib/api';
 
 export default function ChatScreen({ route }) {
   const { bookingId, productTitle } = route.params;
@@ -19,8 +19,8 @@ export default function ChatScreen({ route }) {
 
   const fetchMyUser = async () => {
       try {
-          const user = await fetchJson('/api/me');
-          setMyUserId(user.id);
+          const user = await getProfile();
+          if (user) setMyUserId(user.id);
       } catch(e) {
           console.warn(e);
       }

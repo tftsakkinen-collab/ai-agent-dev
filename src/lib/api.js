@@ -35,7 +35,9 @@ function getClientEnvironment() {
 }
 
 export async function getToken() {
-  return AsyncStorage.getItem('token');
+  const token = await AsyncStorage.getItem('token');
+  if (!token || token === 'null' || token === 'undefined') return null;
+  return token;
 }
 
 export async function logout() {
@@ -45,8 +47,15 @@ export async function logout() {
 }
 
 export async function fetchWithAuth(path, options = {}) {
-  const url = buildUrl(path);
   const token = await getToken();
+
+  // 1. ABSOLUTE ZERO NETWORK REQUESTS FOR /api/me WHEN UNAUTHENTICATED
+  if (path === '/api/me' && !token) {
+    setUnauthProfileCached();
+    throw new Error('Unauthorized');
+  }
+
+  const url = buildUrl(path);
   const headers = Object.assign({}, options.headers || {});
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -61,7 +70,7 @@ export async function fetchWithAuth(path, options = {}) {
 export async function fetchJson(path, options = {}) {
   const isGet = !options.method || options.method.toUpperCase() === 'GET';
 
-  // 1. TOISTUVIEN KUTSUJEN VÄLILUKU
+  // 2. TOISTUVIEN KUTSUJEN VÄLILUKU
   if (isGet && (path === '/api/products' || path === '/api/categories')) {
     const cached = getCached(path);
     if (cached) return cached;
@@ -127,6 +136,8 @@ export async function verifyLoginCode(email, code) {
 }
 
 export async function getFavorites() {
+  const token = await getToken();
+  if (!token) return [];
   return fetchJson('/api/favorites');
 }
 
@@ -144,15 +155,15 @@ export async function removeFavorite(productId) {
   });
 }
 
-// 3. VÄHENNÄ /api/me-KUTSUJEN MÄÄRÄÄ
+// 3. ZERO UNNECESSARY /api/me NETWORK CALLS
 export async function getProfile() {
   const token = await getToken();
   if (!token) {
-    return null; // Don't call network if not logged in!
+    return null; // Return null immediately without network call!
   }
 
   if (isUnauthProfileCached()) {
-    return null; // Don't repeat unauth 401 network requests!
+    return null; // Return null immediately without repeated 401 network call!
   }
 
   const cached = getCached('/api/me');

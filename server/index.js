@@ -60,6 +60,7 @@ const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } });
 let sharp;
 try { sharp = require('sharp'); } catch(e) { console.warn('Sharp not installed, skipping optimization'); }
 const app = express();
+app.disable('x-powered-by');
 const port = process.env.PORT || 3000;
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy'); // eslint-disable-line no-unused-vars
 const authSecret = process.env.AUTH_SECRET || 'gearspot-dev-auth-secret';
@@ -256,7 +257,7 @@ const products = [
     locationName: 'Nallikari Beach, Oulu',
     rating: 4.9,
     reviewCount: 18,
-    photos: ['https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800&q=80'],
+    photos: ['https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1000&q=80'],
     providerId: 'provider-1',
     searchTerms: ['sup', 'lauta', 'oulu', 'nallikari', 'stand up paddle']
   },
@@ -271,7 +272,7 @@ const products = [
     locationName: 'Nallikari, Oulu',
     rating: 5.0,
     reviewCount: 12,
-    photos: ['https://images.unsplash.com/photo-1517649763962-0c623266010b?auto=format&fit=crop&w=800&q=80'],
+    photos: ['https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1000&q=80'],
     providerId: 'provider-2',
     searchTerms: ['sup', 'lauta', 'oulu', 'tuppisaari', 'touring']
   },
@@ -286,7 +287,7 @@ const products = [
     locationName: 'Hietasaari, Oulu',
     rating: 4.8,
     reviewCount: 9,
-    photos: ['https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80'],
+    photos: ['https://images.unsplash.com/photo-1520255870062-bd79d3865de7?auto=format&fit=crop&w=1000&q=80'],
     providerId: 'provider-2',
     searchTerms: ['sup', 'aloittelija', 'oulu', 'hietasaari', 'lauta']
   },
@@ -301,7 +302,7 @@ const products = [
     locationName: 'Kuivasjärvi, Oulu',
     rating: 4.9,
     reviewCount: 15,
-    photos: ['https://images.unsplash.com/photo-1520255870062-bd79d3865de7?auto=format&fit=crop&w=800&q=80'],
+    photos: ['https://images.unsplash.com/photo-1517649763962-0c623266010b?auto=format&fit=crop&w=1000&q=80'],
     providerId: 'provider-1',
     searchTerms: ['sup', 'lauta', 'oulu', 'kuivasjärvi', 'koira', 'perhe']
   },
@@ -316,7 +317,7 @@ const products = [
     locationName: 'Tuira (Oulujoki), Oulu',
     rating: 4.9,
     reviewCount: 14,
-    photos: ['https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80'],
+    photos: ['https://images.unsplash.com/photo-1563299796-17596ed6b017?auto=format&fit=crop&w=1000&q=80'],
     providerId: 'provider-1',
     searchTerms: ['sup', 'tuira', 'oulu', 'oulujoki', 'joki']
   },
@@ -331,7 +332,7 @@ const products = [
     locationName: 'Linnanmaa, Oulu',
     rating: 5.0,
     reviewCount: 7,
-    photos: ['https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800&q=80'],
+    photos: ['https://images.unsplash.com/photo-1502680390469-be75c86b636f?auto=format&fit=crop&w=1000&q=80'],
     providerId: 'provider-1',
     searchTerms: ['sup', 'linnanmaa', 'oulu', 'kuntoilu', 'speed']
   },
@@ -346,7 +347,7 @@ const products = [
     locationName: 'Tuiran ranta, Oulu',
     rating: 5.0,
     reviewCount: 11,
-    photos: ['https://images.unsplash.com/photo-1517649763962-0c623266010b?auto=format&fit=crop&w=800&q=80'],
+    photos: ['https://images.unsplash.com/photo-1519046904884-53103b34b206?auto=format&fit=crop&w=1000&q=80'],
     providerId: 'provider-2',
     searchTerms: ['sup', 'tandem', 'tuira', 'oulu', 'kaksihengen']
   },
@@ -361,7 +362,7 @@ const products = [
     locationName: 'Nallikari, Oulu',
     rating: 5.0,
     reviewCount: 8,
-    photos: ['https://images.unsplash.com/photo-1520255870062-bd79d3865de7?auto=format&fit=crop&w=800&q=80'],
+    photos: ['https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1000&q=80'],
     providerId: 'provider-1',
     searchTerms: ['sup', 'nallikari', 'carbon', 'premium', 'oulu']
   }
