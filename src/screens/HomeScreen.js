@@ -12,30 +12,30 @@ const quickLocationItems = [
   { icon: 'map-pin', label: 'Linnanmaa', query: 'Linnanmaa Oulu' }
 ];
 
-const categoryCards = [
-  { title: 'All-round SUP', label: 'Täydellinen aloittelijalle & rennolle retkelle Oulujoella', query: 'all-round', icon: 'disc' },
-  { title: 'Touring SUP', label: 'Nopeampi ja pidempi malli pidemmille reiteille & Nallikariin', query: 'touring', icon: 'zap' },
-  { title: 'Kaksikko / Perhe-SUP', label: 'Isompi kantavuus 2 henkilölle tai retkivarusteille', query: 'kaksikko', icon: 'users' }
-];
-
-const guideArticles = [
-  { title: 'Paras SUP-reitti Oulussa (3 Reittiä)', slug: 'paras-sup-reitti-oulussa', desc: 'Reittiohjeet Tuiran suistoon, Nallikariin ja Kuivasjärvelle.' },
-  { title: 'Nallikari vai Hietasaari — Kumpa Sopii Sinulle?', slug: 'nallikari-vai-hietasaari', desc: 'Vertailussa tuuliolosuhteet, rannat ja palvelut.' }
-];
-
 export default function HomeScreen({ navigation }) {
   const { lang, toggleLang, t } = useLanguage();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [searchText, setSearchText] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState('Kaikki');
-  const [sortOrder, setSortOrder] = useState('Suosituimmat');
+  const [selectedLocation, setSelectedLocation] = useState(t('allLocations'));
+  const [sortOrder, setSortOrder] = useState(t('sortPopular'));
 
-  const ouluLocations = ['Kaikki Oulun noutopisteet', 'Nallikari', 'Tuira', 'Hietasaari', 'Kuivasjärvi'];
-  const sortOptions = ['Suosituimmat', 'Halvin ensin', 'Kallein ensin'];
+  const categoryCards = [
+    { title: t('catAllroundTitle'), label: t('catAllroundLabel'), query: 'all-round', icon: 'disc' },
+    { title: t('catTouringTitle'), label: t('catTouringLabel'), query: 'touring', icon: 'zap' },
+    { title: t('catTandemTitle'), label: t('catTandemLabel'), query: 'kaksikko', icon: 'users' }
+  ];
+
+  const guideArticles = [
+    { title: t('guide1Title'), slug: 'paras-sup-reitti-oulussa', desc: t('guide1Desc') },
+    { title: t('guide2Title'), slug: 'nallikari-vai-hietasaari', desc: t('guide2Desc') }
+  ];
+
+  const ouluLocations = [t('allLocations'), 'Nallikari', 'Tuira', 'Hietasaari', 'Kuivasjärvi'];
+  const sortOptions = [t('sortPopular'), t('sortCheapest'), t('sortPricy')];
 
   let filteredProducts = [...products].filter(p => {
-    if (selectedLocation !== 'Kaikki' && selectedLocation !== 'Kaikki Oulun noutopisteet') {
+    if (selectedLocation !== 'Kaikki' && selectedLocation !== t('allLocations')) {
       const locMatch = p.locationName && p.locationName.toLowerCase().includes(selectedLocation.toLowerCase());
       const searchMatch = p.searchTerms && p.searchTerms.toLowerCase().includes(selectedLocation.toLowerCase());
       if (!locMatch && !searchMatch) return false;
@@ -52,13 +52,13 @@ export default function HomeScreen({ navigation }) {
     return true;
   });
 
-  if (sortOrder === 'Halvin ensin') {
+  if (sortOrder === t('sortCheapest') || sortOrder === 'Halvin ensin') {
     filteredProducts = filteredProducts.sort((a, b) => {
       const priceA = parseInt((a.price || '').replace(/[^0-9]/g, '')) || 0;
       const priceB = parseInt((b.price || '').replace(/[^0-9]/g, '')) || 0;
       return priceA - priceB;
     });
-  } else if (sortOrder === 'Kallein ensin') {
+  } else if (sortOrder === t('sortPricy') || sortOrder === 'Kallein ensin') {
     filteredProducts = filteredProducts.sort((a, b) => {
       const priceA = parseInt((a.price || '').replace(/[^0-9]/g, '')) || 0;
       const priceB = parseInt((b.price || '').replace(/[^0-9]/g, '')) || 0;
@@ -74,7 +74,7 @@ export default function HomeScreen({ navigation }) {
     fetchJson('/api/categories')
       .then((data) => setCategories(data))
       .catch(() => setCategories(categoryCards));
-  }, []);
+  }, [lang]);
 
   const goToSearch = () => {
     navigation.navigate('MapSearch', { initialQuery: searchText.trim() });
@@ -98,7 +98,7 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* 2. UNIFIED BANNER COLOR: BOTH BANNERS USE TEAL (#15948b) */}
+        {/* FOUNDING HOST BANNER WITH BILINGUAL TRANSLATION */}
         <TouchableOpacity
           style={styles.bannerTealCard}
           onPress={() => navigation.navigate('BecomeHost')}
@@ -106,10 +106,10 @@ export default function HomeScreen({ navigation }) {
         >
           <View style={styles.bannerHeaderRow}>
             <Icon name="award" size={16} color="#00e5d1" style={{ marginRight: 6 }} />
-            <Text style={styles.bannerBadgeText}>FOUNDING HOST -ETU OULUSSA</Text>
+            <Text style={styles.bannerBadgeText}>{t('foundingHostBadge')}</Text>
           </View>
-          <Text style={styles.bannerTitleText}>0 % välityspalkkiota ensimmäiset 3 kuukautta uustunnuksille!</Text>
-          <Text style={styles.bannerSubtitleText}>Liity vuokraajaksi tänään ja ansaitse 100 % tulostasi →</Text>
+          <Text style={styles.bannerTitleText}>{t('foundingHostHeadline')}</Text>
+          <Text style={styles.bannerSubtitleText}>{t('foundingHostSub')}</Text>
         </TouchableOpacity>
 
         {/* HERO BANNER */}
@@ -138,7 +138,7 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* OULU LOCATION CHIPS — MIN 44PX HEIGHT */}
+          {/* OULU LOCATION CHIPS */}
           <Text style={styles.chipSectionLabel}>{t('popularLocations')}</Text>
           <View style={styles.chipRow}>
             {quickLocationItems.map((item) => (
@@ -155,7 +155,7 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* 2. UNIFIED BANNER COLOR: GROUP BOOKING BANNER USES THE EXACT SAME TEAL (#15948b) */}
+        {/* GROUP BOOKING BANNER WITH BILINGUAL TRANSLATION */}
         <TouchableOpacity
           style={styles.bannerTealCard}
           onPress={() => navigation.navigate('GroupBooking')}
@@ -163,14 +163,14 @@ export default function HomeScreen({ navigation }) {
         >
           <View style={styles.bannerHeaderRow}>
             <Icon name="users" size={16} color="#00e5d1" style={{ marginRight: 6 }} />
-            <Text style={styles.bannerBadgeText}>RYHMÄVARAUS &amp; POLTTARIT</Text>
+            <Text style={styles.bannerBadgeText}>{t('groupBookingBadge')}</Text>
           </View>
-          <Text style={styles.bannerTitleText}>Ryhmävaraus (4–25 henkilöä)</Text>
-          <Text style={styles.bannerSubtitleText}>Varaa useampi lauta, ohjaaja &amp; kuljetus rannalle yhdellä laakilla →</Text>
+          <Text style={styles.bannerTitleText}>{t('groupBookingTitle')}</Text>
+          <Text style={styles.bannerSubtitleText}>{t('groupBookingSub')}</Text>
         </TouchableOpacity>
 
-        {/* GUIDES SECTION */}
-        <Text style={styles.sectionTitle}>Oulun SUP-Oppaat &amp; Reitit</Text>
+        {/* GUIDES SECTION WITH BILINGUAL TRANSLATION */}
+        <Text style={styles.sectionTitle}>{t('guidesTitle')}</Text>
         <View style={styles.guideRow}>
           {guideArticles.map((article) => (
             <TouchableOpacity
@@ -184,17 +184,17 @@ export default function HomeScreen({ navigation }) {
                 <Text style={styles.guideTitle}>{article.title}</Text>
               </View>
               <Text style={styles.guideDesc}>{article.desc}</Text>
-              <Text style={styles.guideLink}>Lue opas →</Text>
+              <Text style={styles.guideLink}>{t('readGuide')}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* CATEGORY CARDS */}
+        {/* CATEGORY CARDS WITH BILINGUAL TRANSLATION */}
         <Text style={styles.sectionTitle}>{t('categoriesTitle')}</Text>
         <View style={styles.categoryRow}>
-          {(categories.length ? categories : categoryCards).map((category) => (
+          {categoryCards.map((category) => (
             <TouchableOpacity
-              key={category.id || category.title}
+              key={category.title}
               style={styles.categoryCard}
               onPress={() => navigation.navigate('MapSearch', { initialQuery: category.query })}
               activeOpacity={0.7}
@@ -208,24 +208,24 @@ export default function HomeScreen({ navigation }) {
           ))}
         </View>
 
-        {/* LOCATION & SORT FILTERS — ALL BUTTONS MIN 44PX HEIGHT */}
+        {/* LOCATION & SORT FILTERS WITH BILINGUAL TRANSLATION */}
         <View style={styles.filterSection}>
-          <Text style={styles.filterSectionTitle}>Noutopiste Oulussa:</Text>
+          <Text style={styles.filterSectionTitle}>{t('pickUpLabel')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
             {ouluLocations.map(loc => (
               <TouchableOpacity
                 key={loc}
-                style={[styles.filterChip, selectedLocation === loc && styles.filterChipActive]}
+                style={[styles.filterChip, (selectedLocation === loc || (selectedLocation === 'Kaikki' && loc === t('allLocations'))) && styles.filterChipActive]}
                 onPress={() => setSelectedLocation(loc)}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.filterChipText, selectedLocation === loc && styles.filterChipTextActive]}>{loc}</Text>
+                <Text style={[styles.filterChipText, (selectedLocation === loc || (selectedLocation === 'Kaikki' && loc === t('allLocations'))) && styles.filterChipTextActive]}>{loc}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
 
           <View style={styles.sortRow}>
-            <Text style={styles.sortLabel}>Järjestä:</Text>
+            <Text style={styles.sortLabel}>{t('sortLabel')}</Text>
             {sortOptions.map(sort => (
               <TouchableOpacity
                 key={sort}
@@ -239,7 +239,7 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* PRODUCTS SECTION */}
+        {/* PRODUCTS SECTION WITH BILINGUAL TRANSLATION */}
         <View style={styles.productsHeader}>
           <Text style={styles.sectionTitle}>{t('availableBoards')} ({filteredProducts.length})</Text>
           <Text style={styles.sectionSubtitle}>{t('includesGear')}</Text>
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
     borderColor: '#d2dfa6',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center'
+    justify: 'center'
   },
   btnIcon: { marginRight: 6 },
   langToggleText: { color: '#0f2f3d', fontSize: 13, fontWeight: '800' },
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderWidth: 1,
     borderColor: '#e2ebf0',
-    justifyContent: 'center'
+    justify: 'center'
   },
   categoryHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
   categoryTitle: { fontSize: 14, fontWeight: '800', color: '#0f2f3d' },

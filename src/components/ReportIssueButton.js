@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { reportIssue } from '../lib/api';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export default function ReportIssueButton({
   routeName,
@@ -10,6 +11,7 @@ export default function ReportIssueButton({
   initialPriority = 'medium',
   floating = true
 }) {
+  const { t } = useLanguage();
   const [visible, setVisible] = useState(false);
   const [message, setMessage] = useState(initialMessage);
   const [reporterEmail, setReporterEmail] = useState('');
@@ -60,8 +62,9 @@ export default function ReportIssueButton({
       <TouchableOpacity
         style={[styles.trigger, floating ? styles.floatingTrigger : styles.inlineTrigger]}
         onPress={() => setVisible(true)}
+        activeOpacity={0.8}
       >
-        <Text style={styles.triggerText}>Ilmoita ongelmasta</Text>
+        <Text style={styles.triggerText}>{t('reportIssue')}</Text>
       </TouchableOpacity>
 
       <Modal visible={visible} transparent animationType="fade" onRequestClose={reset}>
@@ -113,12 +116,15 @@ export default function ReportIssueButton({
 
 const styles = StyleSheet.create({
   trigger: {
+    minHeight: 44,
     backgroundColor: '#0f2f3d',
     borderRadius: 999,
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     borderWidth: 1,
-    borderColor: '#23485d'
+    borderColor: '#23485d',
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   floatingTrigger: {
     position: 'absolute',
@@ -205,7 +211,7 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between'
+    justify: 'space-between'
   },
   secondaryButton: {
     borderWidth: 1,

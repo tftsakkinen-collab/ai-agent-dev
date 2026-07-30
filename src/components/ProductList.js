@@ -1,8 +1,11 @@
 import React from 'react';
 import { Text, StyleSheet, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
+import { useLanguage } from '../contexts/LanguageContext';
 
 export default function ProductList({ products = [], navigation }) {
+  const { t } = useLanguage();
+
   const renderItem = ({ item }) => {
     const typeLabel = item.type ? item.type.replace('_', ' ') : 'Varuste';
     const providerName = item.provider?.name || 'GearSpot Oulu';
@@ -20,7 +23,7 @@ export default function ProductList({ products = [], navigation }) {
             <Text style={styles.name}>{item.name}</Text>
             <View style={styles.locationRow}>
               <Icon name="map-pin" size={13} color="#556b7a" style={{ marginRight: 4 }} />
-              <Text style={styles.provider}>{item.locationName || 'Oulu'} • Tarjoaja: {providerName}</Text>
+              <Text style={styles.provider}>{item.locationName || 'Oulu'} • {t('providerTag')}: {providerName}</Text>
             </View>
           </View>
           <View style={styles.typeBadge}>
@@ -32,13 +35,13 @@ export default function ProductList({ products = [], navigation }) {
 
         <View style={styles.metaRow}>
           <View style={styles.ratingBadge}>
-            <Icon name="star" size={13} color="#15948b" style={{ marginRight: 4 }} />
+            <Icon name="star" size={13} color="#0e6962" style={{ marginRight: 4 }} />
             <Text style={styles.ratingValue}>{ratingValue}</Text>
-            <Text style={styles.reviewCount}>({reviewCount} arvostelua)</Text>
+            <Text style={styles.reviewCount}>({reviewCount} {t('reviewsCount')})</Text>
           </View>
 
           <View style={styles.priceContainer}>
-            <Text style={styles.priceLabel}>VUOKRA ALKAEN</Text>
+            <Text style={styles.priceLabel}>{t('priceFrom')}</Text>
             <Text style={styles.price}>{item.price}</Text>
           </View>
         </View>
@@ -46,7 +49,7 @@ export default function ProductList({ products = [], navigation }) {
         {Array.isArray(item.photos) && item.photos.length ? (
           <View style={styles.photoRow}>
             <Icon name="camera" size={12} color="#7a8e9c" style={{ marginRight: 4 }} />
-            <Text style={styles.photoCount}>{item.photos.length} laadukasta kuvaa</Text>
+            <Text style={styles.photoCount}>{item.photos.length} {t('photosCount')}</Text>
           </View>
         ) : null}
       </TouchableOpacity>
@@ -57,8 +60,8 @@ export default function ProductList({ products = [], navigation }) {
     return (
       <View style={styles.emptyContainer}>
         <Icon name="info" size={24} color="#15948b" style={{ marginBottom: 8 }} />
-        <Text style={styles.emptyTitle}>Ei hakuehtoja vastaavia lautasaatavuuksia.</Text>
-        <Text style={styles.emptySubtitle}>Kokeile valita toinen Oulun noutopiste tai hakutermi.</Text>
+        <Text style={styles.emptyTitle}>{t('emptyTitle')}</Text>
+        <Text style={styles.emptySubtitle}>{t('emptySub')}</Text>
       </View>
     );
   }
