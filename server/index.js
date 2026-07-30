@@ -61,8 +61,8 @@ let sharp;
 try { sharp = require('sharp'); } catch(e) { console.warn('Sharp not installed, skipping optimization'); }
 const app = express();
 app.disable('x-powered-by');
-const port = process.env.PORT || 3000;
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy'); // eslint-disable-line no-unused-vars
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const stripe = stripeSecretKey ? Stripe(stripeSecretKey) : null; // eslint-disable-line no-unused-vars
 const authSecret = process.env.AUTH_SECRET || 'gearspot-dev-auth-secret';
 const exposeAuthCode = process.env.AUTH_EXPOSE_CODE !== 'false';
 const adminApiKey = process.env.ADMIN_API_KEY || '';
@@ -1112,7 +1112,12 @@ app.post('/api/bookings', async (req, res) => {
   const isInstantBooking = product.bookingMode === 'instant' || !product.bookingMode; // Default to instant
 
   let paymentIntent;
+  let checkoutSession;
   if (paymentMethod === 'stripe') {
+    if (!stripe) {
+      console.error('[stripe-error] STRIPE_SECRET_KEY is not configured in process.env');
+      return res.status(500).json({ error: 'Stripe API-avain (STRIPE_SECRET_KEY) puuttuu palvelimelta. Aseta se Vercelin ympäristömuuttujiin.' });
+    }
     try {
       paymentIntent = await stripe.paymentIntents.create({
         amount: amountToCharge,
@@ -1125,6 +1130,32 @@ app.post('/api/bookings', async (req, res) => {
           depositHold: 'true'
         },
       });
+
+      try {
+        checkoutSession = await stripe.checkout.sessions.create({
+          payment_method_types: ['card'],
+          mode: 'payment',
+          line_items: [{
+            price_data: {
+              currency: 'eur',
+              product_data: {
+                name: `GearSpot — ${product.name}`,
+                description: `SUP-laudan vuokraus: ${selectedDate || ''} ${selectedTime || ''}`.trim()
+              },
+              unit_amount: amountToCharge,
+            },
+            quantity: 1,
+          }],
+          success_url: `https://gearspot.xyz/profile?bookingId=${id}&status=success`,
+          cancel_url: `https://gearspot.xyz/booking/${product.id}?status=cancelled`,
+          metadata: {
+            bookingId: id,
+            productId: product.id,
+          }
+        });
+      } catch (sessionErr) {
+        console.warn('[stripe] Checkout Session creation fallback:', sessionErr.message);
+      }
     } catch (err) {
       console.error(`[stripe-error] PaymentIntent creation failed for productId=${product.id}:`, err.message);
       return res.status(500).json({ error: 'Maksuvälittäjään ei saatu yhteyttä.' });
@@ -1195,7 +1226,11 @@ app.post('/api/bookings', async (req, res) => {
   await saveNotifications(notifs);
   await saveBookings(allBookings);
 
-  res.status(200).json({ ...getSafeBookingView(booking), clientSecret: typeof paymentIntent !== 'undefined' && paymentIntent ? paymentIntent.client_secret : null });
+  res.status(200).json({
+    ...getSafeBookingView(booking),
+    clientSecret: typeof paymentIntent !== 'undefined' && paymentIntent ? paymentIntent.client_secret : null,
+    checkoutUrl: typeof checkoutSession !== 'undefined' && checkoutSession ? checkoutSession.url : null
+  });
 });
 
 app.post('/api/bookings/:id/refund', async (req, res) => {

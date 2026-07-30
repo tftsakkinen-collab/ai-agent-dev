@@ -180,6 +180,11 @@ export default function BookingScreen({ route, navigation }) {
         })
       });
 
+      if (Platform.OS === 'web' && booking.checkoutUrl) {
+        window.location.href = booking.checkoutUrl;
+        return;
+      }
+
       if (!booking.clientSecret) {
          showToast('Varaus vahvistettu!', `Varaus lautaan ${product?.name} vahvistettu. Loppusumma: ${totalPriceNum} €.`);
          navigation.navigate('Profile');
