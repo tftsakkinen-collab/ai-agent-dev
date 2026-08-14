@@ -11,7 +11,10 @@ function App() {
       {!masterPassword ? (
         <PasswordSetup onPasswordSet={setMasterPassword} />
       ) : (
-        <DictationView password={masterPassword} />
+        <DictationView
+          password={masterPassword}
+          onLock={() => setMasterPassword(null)}
+        />
       )}
     </div>
   );

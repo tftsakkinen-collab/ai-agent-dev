@@ -1,15 +1,45 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { encryptText, saveDictation, getDictations, decryptText } from '../lib/encryption';
 
-export default function DictationView({ password }) {
+export default function DictationView({ password, onLock }) {
   const [isRecording, setIsRecording] = useState(false);
   const [currentText, setCurrentText] = useState('');
   const [savedRecords, setSavedRecords] = useState([]);
   const [statusMsg, setStatusMsg] = useState('');
 
-  // Ladataan vanhat sanelut, kun komponentti avataan
+  // Refs for audio and worker
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const workerRef = useRef(null);
+  const audioContextRef = useRef(null);
+
+  // Initialize worker and load records on mount
   useEffect(() => {
     loadSavedRecords();
+
+    // Initialize the Web Worker for AI transcription
+    workerRef.current = new Worker(new URL('../lib/worker.js', import.meta.url), {
+      type: 'module'
+    });
+
+    workerRef.current.addEventListener('message', (e) => {
+      const { status, text, data, error } = e.data;
+
+      if (status === 'progress') {
+        setStatusMsg(`Ladataan tekoälymallia selaimeen... ${Math.round(data.progress || 0)}%`);
+      } else if (status === 'processing') {
+        setStatusMsg('Analysoidaan sanelua...');
+      } else if (status === 'complete') {
+        setCurrentText(prev => prev + (prev ? ' ' : '') + text.trim());
+        setStatusMsg('Sanelu valmis! Voit nyt muokata ja tallentaa sen.');
+      } else if (status === 'error') {
+        setStatusMsg('Virhe puheentunnistuksessa: ' + error);
+      }
+    });
+
+    return () => {
+      if (workerRef.current) workerRef.current.terminate();
+    };
   }, []);
 
   const loadSavedRecords = async () => {
@@ -31,21 +61,64 @@ export default function DictationView({ password }) {
     }
   };
 
-  const handleRecordToggle = () => {
-    if (!isRecording) {
-      setIsRecording(true);
-      setCurrentText('');
-      setStatusMsg('Äänitetään... (Tässä MVP:ssä simuloidaan puheentunnistusta. Odota hetki.)');
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      audioChunksRef.current = [];
 
-      // Simuloidaan taustapalvelimen (Whisper) vastausta
-      setTimeout(() => {
-        setCurrentText('Potilas kertoo, että oikea olkapää on ollut kipeä kaksi viikkoa. Kraniocervikaalinen testaus normaali. Suositellaan kiertäjäkalvosimen vahvistamista.');
-        setIsRecording(false);
-        setStatusMsg('Sanelu valmis! Voit nyt muokata ja tallentaa sen.');
-      }, 3000);
-    } else {
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorderRef.current.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        processAudio(audioBlob);
+        stream.getTracks().forEach(track => track.stop()); // Clean up mic
+      };
+
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+      setStatusMsg('Äänitetään... Puhu selkeästi.');
+    } catch (err) {
+      console.error("Mic error:", err);
+      setStatusMsg('Virhe mikrofonin avaamisessa. Anna selaimelle lupa käyttää mikrofonia.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
       setIsRecording(false);
-      setStatusMsg('Sanelu keskeytetty.');
+      setStatusMsg('Prosessoidaan ääntä tekoälyllä...');
+    }
+  };
+
+  const handleRecordToggle = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+
+  // Convert audio blob to Float32Array 16kHz for Whisper
+  const processAudio = async (blob) => {
+    try {
+      const arrayBuffer = await blob.arrayBuffer();
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+      }
+      const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
+      const float32Array = audioBuffer.getChannelData(0);
+
+      // Send to worker
+      workerRef.current.postMessage({ audio: float32Array });
+    } catch (e) {
+      setStatusMsg('Virhe äänen käsittelyssä.');
+      console.error(e);
     }
   };
 
@@ -73,8 +146,13 @@ export default function DictationView({ password }) {
   return (
     <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #ccc', paddingBottom: '1rem', marginBottom: '2rem' }}>
-        <h2>Kirjaajanne (Selain-MVP)</h2>
-        <span style={{ color: 'green' }}>✓ Suojattu paikallisesti</span>
+        <h2>Kirjaajanne (Täysi Selainversio)</h2>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <span style={{ color: 'green', fontWeight: 'bold' }}>🔒 Suojattu AES-GCM</span>
+          <button onClick={onLock} style={{ padding: '0.4rem 0.8rem', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+            Lukitse Ohjelma
+          </button>
+        </div>
       </header>
 
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
