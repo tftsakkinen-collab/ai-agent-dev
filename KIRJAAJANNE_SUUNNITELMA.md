@@ -104,7 +104,31 @@ Vaihtoehtoisesti, jos mallit saadaan optimoitua tarpeeksi (WebAssembly/WebGPU), 
 4.  **Jakelu ja Asennus:** Raskaat paikalliset kielimallit kasvattavat asennuspaketin kokoa (helposti useita gigatavuja). Tämä saattaa olla hidasta tai hämmentävää asentaa. Vaihtoehtoisesti voidaan jakaa kevyt asennuspaketti, joka lataa mallit taustalla ensimmäisen käynnistyksen yhteydessä.
 5.  **Käyttöjärjestelmät (Mac vs. Windows):** Paikallisten mallien saaminen pyörimään tehokkaasti (esim. laitteistokiihdytyksellä) vaatii hieman erilaista optimointia Apple Silicon -koneille ja Windows-koneille, joissa voi olla hyvinkin vaihtelevaa rautaa.
 
-## 6. Esihenkilön / Liiketoimintajohdon Huomiot: Ratkaistavat esteet ennen toteutusta
+## 6. Ratkaisu Prioriteetteihin: Selainpohjainen Toteutus (Käytettävyys + Asennettavuus + Tietoturva)
+
+Kun projektin ehdottomat pääprioriteetit ovat **1) Helppo asennettavuus ja käytettävyys** ja **2) Täydellinen tietoturva (paikallisuus)**, selaimessa toimiva ratkaisu on ainoa oikea tie.
+
+Haasteena on kuitenkin se, että tehokkaat tekoälymallit (Whisper suomen kielelle ja LLM terminologian korjaukseen) ovat valtavia tiedostoja, joiden pyörittäminen suoraan selaimen muistissa on nykyteknologialla epävakaata keskitason tietokoneilla.
+
+Tämän ristiriidan ratkaisemiseksi ehdotamme kaksiportaista toteutusmallia selainpohjaisuuteen:
+
+### Tavoitetila (Täysin selainpohjainen WebGPU/WASM)
+Ideaalitilanteessa käyttäjä vain menee osoitteeseen `kirjaajanne.fi`. Sivu lataa taustalla tekoälymallit selaimen välimuistiin (cache) ja ajaa ne täysin lokaalisti käyttäen laitteiston grafiikkakorttia (WebGPU).
+*   **Miksi tämä on vaikeaa nyt:** Selainten muistirajoitukset kaatavat usein välilehden, jos ladataan monen gigatavun LLM-malleja. Lisäksi Applen Safarin tuki WebGPU:lle on rajallinen. Tämä lähestymistapa on täydellinen asennettavuudeltaan (0 asennusta), mutta erittäin riskialtis toimintavarmuudeltaan MVP-vaiheessa.
+
+### MVP-Ratkaisu: Selainkäyttöliittymä + Näkymätön "Portable" Taustamoottori
+Saavuttaaksemme tavoitteen *heti*, rakennamme järjestelmän näin:
+1.  **Käyttöliittymä on PWA-selainsovellus (Progressive Web App).** Käyttäjä asioi tutussa selaimessa. Selaimessa tapahtuu vahva AES-GCM salaus (IndexedDB:hen), ja sieltä tekstit kopioidaan potilastietojärjestelmään.
+2.  **Tekoälymoottori on "1-klikkauksen Portable EXE/DMG".** Jotta vältämme monimutkaiset asennukset tai komentorivin, paketoiden Whisper.cpp:n ja Llama.cpp:n yhteen pieneen, asennusta vaatimattomaan tiedostoon (esim. `Kirjaajanne-Moottori.exe`).
+    *   **Käyttäjäkokemus:** Käyttäjä lataa nettisivulta yhden tiedoston ja tuplaklikkaa sitä. Mitään asennusvelhoa (Install Shield) ei tarvita. Ohjelma aukeaa taustalle huomaamatta ("System Tray" kuvake kellon viereen).
+    *   Tämän jälkeen selaimeen avattu `kirjaajanne.fi` (tai paikallinen sivu) osaa automaattisesti kommunikoida tämän taustalla pyörivän moottorin kanssa (`localhost`).
+
+**Yhteenveto prioriteettien täyttymisestä:**
+*   **Helppo asennettavuus:** Vain yksi tuplaklikattava tiedosto, ei monimutkaista asennusvelhoa.
+*   **Helppo käytettävyys:** Kaikki varsinainen työ tehdään tutussa selaimessa, selkeässä käyttöliittymässä.
+*   **Tietoturvallisuus:** Data ei koskaan siirry selaimesta ulospäin internetiin. Kaikki prosessointi tapahtuu taustamoottorin sisällä käyttäjän omalla koneella, ja selain salaa tekstit tallentaessaan ne.
+
+## 7. Esihenkilön / Liiketoimintajohdon Huomiot: Ratkaistavat esteet ennen toteutusta
 
 Esihenkilön ja tuoteomistajan näkökulmasta projektissa on teknisen koodaamisen lisäksi merkittäviä strategisia ja liiketoiminnallisia kysymyksiä, jotka täytyy ratkaista tai ainakin linjata ennen kuin kehittäjät aloittavat koodaamisen:
 
