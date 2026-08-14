@@ -69,9 +69,20 @@ Vaihtoehtoisesti, jos mallit saadaan optimoitua tarpeeksi (WebAssembly/WebGPU), 
 *   **Tallennus ja Salaus (UUSI):** Selaimen **IndexedDB** paikalliseen tallennukseen. Tallennus salataan selaimessa käyttäjän syöttämällä salasanalla käyttäen **Web Crypto API:n AES-GCM** salausta.
 *   **Puheentunnistus (ASR):** **Whisper.cpp** (C/C++ implementaatio OpenAI:n Whisperistä). Se on optimoitu toimimaan CPU:lla (ja Apple Siliconilla), joten se ei vaadi käyttäjältä kalliita näytönohjaimia.
     *   *Malli:* **Whisper Small tai Base** (tai erikseen suomeen hienosäädetty malli, esim. Hugging Facesta). Small tarjoaa yleensä riittävää tarkkuutta suomen kielessä MVP-vaiheeseen.
-*   **Terminologian korjauskerros ja Rakenteistus:** **Paikallinen LLM (Large Language Model) jälkikäsittelyvaiheena.**
-    *   *Ratkaisu:* ASR (Whisper) tuottaa raakatekstin. Tämän jälkeen teksti syötetään paikallisesti ajettavalle LLM:lle, jota ajetaan **Llama.cpp**:n avulla.
-    *   *Promptaus vs. Hienosäätö:* **Promptaus** (In-Context Learning) on MVP-vaiheessa kustannustehokkain ja nopein ratkaisu. Järjestelmäprompti voisi olla: "Olet suomalainen fysioterapeutti. Korjaa seuraavasta sanelusta lääketieteelliset termit ja jaottele teksti otsikoiden alle...". LLM ymmärtää kontekstin paremmin kuin yksinkertainen etsi-ja-korvaa -sanasto, erityisesti foneettisten virheiden kohdalla (esim. "kranio servikaalinen" -> "kraniocervikaalinen"). Pieni 7-8 miljardin parametrin malli (kvantisoituna) on tähän sopiva.
+*   **Terminologian korjauskerros ja Rakenteistus:** Tekoälyn opettaminen ymmärtämään suomenkielistä terveydenhuollon terminologiaa (kuten Käypä hoito -suositusten sisältöä) on kriittistä lääketieteellisen laadun takaamiseksi. Tähän on kolme teknistä päävaihtoehtoa:
+
+    1.  **Hienosäädetty malli (Fine-tuning Whisper tai LLM):**
+        *   Tekoälymallille (esim. Llama 3) syötetään tuhansia sivuja Käypä hoito -suosituksia, fysiologian oppikirjoja ja anonymisoituja potilaskertomuksia. Mallin sisäisiä "painoja" (weights) muutetaan, jotta sen perusymmärrys lääketieteestä kasvaa.
+        *   *Plussat:* Tuottaa kaikkein tarkimman ja syvimmän "äidinkielisen" ymmärryksen lääketieteestä.
+        *   *Miinukset:* Vaatii massiivisen määrän dataa, kalliita näytönohjaimia opettamiseen, ja malli vanhenee nopeasti, kun hoitosuositukset muuttuvat.
+    2.  **Jälkikäsittely-LLM (RAG - Retrieval-Augmented Generation / Promptaus): (SUOSITUS)**
+        *   Sanelun jälkeen raakateksti syötetään lokaalille LLM-mallille. Järjestelmä hakee paikallisesta vektoritietokannasta (johon on syötetty Käypä hoito -tekstit) oikean kontekstin ja käskee LLM:ää: *"Korjaa tämä fysioterapeutin sanelu käyttäen apuna seuraavaa Käypä hoito -suositusta: [Ote tietokannasta]"*.
+        *   *Plussat:* Erinomainen laatu. Tietokantaa (Käypä hoito) voi päivittää päivittäin ilman että tekoälyä tarvitsee kouluttaa uudelleen. Lokaali Llama.cpp pyörittää tätä tehokkaasti.
+        *   *Miinukset:* Voi olla hitaampi ajaa koneella kuin pelkkä sääntökorjaus, koska LLM lukee ja kirjoittaa koko tekstin uudelleen.
+    3.  **Sanasto + Sääntöpohjainen Promptaus (Dictionary + RegEx):**
+        *   Yksinkertainen "Etsi ja Korvaa" -skripti. Jos tekoäly kirjoittaa "kranio servikaalinen", koodi muuttaa sen pakotetusti muotoon "kraniocervikaalinen" käyttäen isoa lääketieteellistä sanakirjaa.
+        *   *Plussat:* Äärimmäisen nopea ja kevyt, ei vaadi tekoälyä sanelun purun jälkeen.
+        *   *Miinukset:* Ei ymmärrä kontekstia ("säde" voi tarkoittaa luuta tai geometriaa). Ei korjaa foneettisesti outoja virheitä. Ei kykene rakenteistamaan tekstiä otsikoiden alle.
 *   **Tietokanta:** SQLite (paikallinen), jos halutaan tallentaa väliaikaisia saneluita tai asetuksia (esim. omat rakennepohjat). MVP:ssä teksti voi elää vain muistissa siihen asti, kunnes käyttäjä kopioi sen leikepöydälle.
 
 ## 4. Karkea Rakennussuunnitelma / Roadmap
