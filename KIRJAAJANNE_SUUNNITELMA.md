@@ -2,7 +2,33 @@
 
 Tämä dokumentti on tuotesuunnitelma ja tekninen arkkitehtuuriehdotus "Kirjaajanne"-sovellukselle, joka on paikallisesti toimiva suomenkielinen sanelu- ja potilaskirjaustyökalu terveydenhuollon ammattilaisille (aluksi fysioterapeuteille ja hammaslääkäreille).
 
-## 1. Vaihtoehtoiset tekniset lähestymistavat
+## 1. Käyttäjäkokemus ja Alustavalinta: Kännykkä, Selain vai Tietokone?
+
+Ennen teknisten ratkaisujen vertailua on oleellista miettiä, mikä alusta on *käyttäjälle (fysioterapeutille/hammaslääkärille)* helpoin laitteen ja potilastietojärjestelmän (Kanta-yhteensopivat järjestelmät kuten Diarium, Kanta, ProConsilium) välisen työnkulun kannalta.
+
+Koska tuotteessa ei ole suoraa integraatiota (MVP-vaihe), valmiin tekstin siirtäminen potilastietojärjestelmään tapahtuu kopioimalla (Copy-Paste).
+
+*   **Tietokone (Työpöytäsovellus)**
+    *   **Työnkulku:** Fysioterapeutti saneluohjelma on auki samalla tietokoneella (esim. toisella näytöllä tai pienenä ikkunana), jossa potilastietojärjestelmä on auki. Sanelu -> "Kopioi" -nappi -> Liitä (Ctrl+V) potilastietojärjestelmään.
+    *   **Plussat:** Erittäin saumaton ja nopea kopiointi-liittäminen. Tyypillisin ympäristö potilastietojen käsittelyyn.
+    *   **Miinukset:** Vaatii ohjelman asennuksen (esim. .exe Windowsille).
+
+*   **Selain (Web-sovellus tietokoneella)**
+    *   **Työnkulku:** Kuten tietokonesovelluksessa, mutta saneluohjelma pyörii selainvälilehdessä.
+    *   **Plussat:** Ei vaadi asennusta, erittäin helppo kokeilla ("avaa vain linkki").
+    *   **Miinukset:** Selaimessa *paikallisten* (on-device) mallien ajaminen on vielä epävakaata ja muistisyöppöä. Tiedoston/mallien lataus voi kestää jokaisella käyttökerralla, ellei välimuisti toimi täydellisesti. Mikrofoni-oikeuksien kyselyt voivat turhauttaa.
+
+*   **Kännykkäsovellus (Mobiili)**
+    *   **Työnkulku:** Fysioterapeutti sanelee kännykkään kävellessään tai istuessaan. Kännykkä rakenteistaa tekstin. *Miten teksti saadaan koneelle potilastietojärjestelmään?* Sähköpostilla, WhatsAppilla (ei tietoturvallinen) tai erillisen pilvisynkronoinnin kautta (rikkoo "on-device" -lupauksen).
+    *   **Plussat:** Äärimmäisen helppo sanelun nauhoitusvaihe, kännykkä on aina mukana.
+    *   **Miinukset:** Kopiointi potilastietojärjestelmään on erittäin kömpelöä ja hitaampaa kuin tietokoneella. Kännykän prosessointiteho rajoittaa paikallisten tekoälymallien kokoa merkittävästi.
+
+**Johtopäätös käyttäjäkokemuksesta:**
+Potilaskirjausten tekeminen tapahtuu poikkeuksetta tietokoneella potilastietojärjestelmään. Jotta "copy-paste"-vaihe on mahdollisimman kitkaton, **tietokoneella toimiva sovellus** on ylivoimaisesti helpoin ja tehokkain ratkaisu ammattilaisen päivittäisessä työssä. Kännykän ja tietokoneen välinen tekstin siirto ilman pilveä on liian kankea MVP-vaiheeseen.
+
+---
+
+## 2. Vaihtoehtoiset tekniset lähestymistavat
 
 Paikallisen (on-device) ratkaisun toteuttamiseksi on kolme pääasiallista lähestymistapaa:
 
@@ -24,7 +50,7 @@ Käyttöliittymä on selainpohjainen sovellus (PWA), mutta se kommunikoi erillis
 ### Suositus MVP:lle: Vaihtoehto A (Paikallinen Desktop-sovellus Tauri + Whisper.cpp/Llama.cpp)
 **Perustelu:** Fysioterapeutit ja hammaslääkärit käyttävät yleensä työpöytäkoneita tai kannettavia tietokoneita vastaanotoillaan. Desktop-sovellus antaa parhaan suorituskyvyn äänentunnistukseen ja luotettavimman mikrofoni-integraation. Se mahdollistaa raskaampien paikallisten kielimallien tehokkaan ajamisen, mitä tarvitaan terminologian korjaamiseen ja rakenteistamiseen suomen kielellä. Tauri on suositeltu kehys, sillä se on huomattavasti Electronia kevyempi ja tuottaa pienempiä asennustiedostoja.
 
-## 2. MVP:n Tekninen Arkkitehtuuri
+## 3. MVP:n Tekninen Arkkitehtuuri
 
 *   **Käyttöliittymä (UI):** React tai Vue.js, paketoituna **Taurilla** (Rust-pohjainen taustajärjestelmä).
 *   **Puheentunnistus (ASR):** **Whisper.cpp** (C/C++ implementaatio OpenAI:n Whisperistä). Se on optimoitu toimimaan CPU:lla (ja Apple Siliconilla), joten se ei vaadi käyttäjältä kalliita näytönohjaimia.
@@ -34,7 +60,7 @@ Käyttöliittymä on selainpohjainen sovellus (PWA), mutta se kommunikoi erillis
     *   *Promptaus vs. Hienosäätö:* **Promptaus** (In-Context Learning) on MVP-vaiheessa kustannustehokkain ja nopein ratkaisu. Järjestelmäprompti voisi olla: "Olet suomalainen fysioterapeutti. Korjaa seuraavasta sanelusta lääketieteelliset termit ja jaottele teksti otsikoiden alle...". LLM ymmärtää kontekstin paremmin kuin yksinkertainen etsi-ja-korvaa -sanasto, erityisesti foneettisten virheiden kohdalla (esim. "kranio servikaalinen" -> "kraniocervikaalinen"). Pieni 7-8 miljardin parametrin malli (kvantisoituna) on tähän sopiva.
 *   **Tietokanta:** SQLite (paikallinen), jos halutaan tallentaa väliaikaisia saneluita tai asetuksia (esim. omat rakennepohjat). MVP:ssä teksti voi elää vain muistissa siihen asti, kunnes käyttäjä kopioi sen leikepöydälle.
 
-## 3. Karkea Rakennussuunnitelma / Roadmap
+## 4. Karkea Rakennussuunnitelma / Roadmap
 
 **Vaihe 1: Proof of Concept (PoC) & Perus-ASR**
 *   Tavoite: Saada paikallinen Whisper pyörimään ja litteroimaan suomea koneella.
@@ -56,7 +82,7 @@ Käyttöliittymä on selainpohjainen sovellus (PWA), mutta se kommunikoi erillis
 *   Omien sanastojen/lyhenteiden lisäys ja hienosäätö.
 *   Integraatio selaimen potilastietojärjestelmiin selainlaajennuksen avulla.
 
-## 4. Avoimet Kysymykset ja Riskit
+## 5. Avoimet Kysymykset ja Riskit
 
 1.  **Laitteistovaatimukset ja Suorituskyky:** Suurin riski on, että tehokas terminologian korjaus (LLM) ja sanelu (Whisper) vaativat liikaa laskentatehoa vanhemmilta tietokoneilta, joita monilla pienyrittäjillä saattaa olla. Ratkaisuna on käyttää voimakkaasti kvantisoituja malleja, mutta se voi vaikuttaa laatuun.
 2.  **MDR-luokittelu (Medical Device Regulation):** Ohjelmisto, joka on tarkoitettu lääketieteelliseen tarkoitukseen, saattaa olla lääkinnällinen laite. Koska "Kirjaajanne" ainoastaan *dokumentoi* sanelun, eikä tee diagnoosia tai hoitopäätöksiä, se ei todennäköisesti kuulu MDR:n piiriin. Tämä on kuitenkin syytä varmistaa juridisesti.
