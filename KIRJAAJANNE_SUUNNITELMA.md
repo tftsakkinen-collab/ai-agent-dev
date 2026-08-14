@@ -24,7 +24,14 @@ Koska tuotteessa ei ole suoraa integraatiota (MVP-vaihe), valmiin tekstin siirt�
     *   **Miinukset:** Kopiointi potilastietojärjestelmään on erittäin kömpelöä ja hitaampaa kuin tietokoneella. Kännykän prosessointiteho rajoittaa paikallisten tekoälymallien kokoa merkittävästi.
 
 **Johtopäätös käyttäjäkokemuksesta:**
-Potilaskirjausten tekeminen tapahtuu poikkeuksetta tietokoneella potilastietojärjestelmään. Jotta "copy-paste"-vaihe on mahdollisimman kitkaton, **tietokoneella toimiva sovellus** on ylivoimaisesti helpoin ja tehokkain ratkaisu ammattilaisen päivittäisessä työssä. Kännykän ja tietokoneen välinen tekstin siirto ilman pilveä on liian kankea MVP-vaiheeseen.
+Potilaskirjausten tekeminen tapahtuu poikkeuksetta tietokoneella potilastietojärjestelmään. Kun painotetaan äärimmäistä helppoutta ja yksinkertaisuutta (ei erillisiä asennuspaketteja), **selainpohjainen sovellus (joka tallentaa tiedot paikallisesti)** on käyttäjälle paras ratkaisu. Ohjelman saa auki kirjanmerkistä, ja sanelut voi selata sekä kopioida suoraan selaimesta potilastietojärjestelmään.
+
+**Tietoturvallinen paikallinen tallennus selaimessa:**
+Selainohjelma voidaan rakentaa niin, että se tallentaa kirjaukset selaimen omaan paikalliseen tietokantaan (IndexedDB). Tietoturva ratkaistaan *selaimessa tapahtuvalla salauksella*:
+1. Käyttäjä luo ohjelmaan salasanan (master key).
+2. Kun sanelu on valmis, teksti salataan vahvalla algoritmilla (esim. AES-GCM 256-bit).
+3. Salattu pätkä tallennetaan selaimen tietokantaan (teksti ei koskaan lähde internetiin).
+4. Vain syöttämällä oikean salasanan käyttäjä saa omat vanhat kirjauksensa auki ja luettavaan muotoon.
 
 ---
 
@@ -47,12 +54,19 @@ Käyttöliittymä on selainpohjainen sovellus (PWA), mutta se kommunikoi erillis
 *   **Plussat:** Kevyt käyttöliittymä, vankka taustapalvelu. Parempi vikasietoisuus kuin puhtaassa WASM-ratkaisussa.
 *   **Miinukset:** Vaatii kahden komponentin hallinnan (selain-UI + taustapalvelu), voi olla hämmentävä loppukäyttäjälle asentaa erillinen ohjelma, jolla ei ole omaa käyttöliittymää.
 
-### Suositus MVP:lle: Vaihtoehto A (Paikallinen Desktop-sovellus Tauri + Whisper.cpp/Llama.cpp)
-**Perustelu:** Fysioterapeutit ja hammaslääkärit käyttävät yleensä työpöytäkoneita tai kannettavia tietokoneita vastaanotoillaan. Desktop-sovellus antaa parhaan suorituskyvyn äänentunnistukseen ja luotettavimman mikrofoni-integraation. Se mahdollistaa raskaampien paikallisten kielimallien tehokkaan ajamisen, mitä tarvitaan terminologian korjaamiseen ja rakenteistamiseen suomen kielellä. Tauri on suositeltu kehys, sillä se on huomattavasti Electronia kevyempi ja tuottaa pienempiä asennustiedostoja.
+### Suositus MVP:lle: Vaihtoehto C (PWA Selainkäyttöliittymä + Lokaali Salattu Tallennus + Kevyt Taustapalvelu)
+**Perustelu:** Fysioterapeutit ja hammaslääkärit käyttävät työpöytäkoneita, joissa selain on jo auki potilastietojärjestelmää varten. Selainpohjaisuus takaa sen, että käyttöliittymä tuntuu tutulta ja helpolta. Jotta raskaita Whisper- ja LLM-malleja voidaan ajaa luotettavasti *suomen kielellä*, on kuitenkin edelleen turvallisinta ajaa varsinainen laskenta selaimen ulkopuolella, koneella pyörivässä kevyessä paikallisessa taustapalvelimessa.
+
+Käyttäjäkokemus on kuitenkin puhdas **Selain**:
+1. Käyttäjä avaa selaimessa sivun (joka yhdistää lokaaliin palvelimeen `localhost`).
+2. Sivulla tapahtuu kaikki: sanelu, paikallinen salaus AES-GCM-algoritmilla, tallennus selaimen sisäiseen tietokantaan ja tekstien purkaminen salasanalla.
+
+Vaihtoehtoisesti, jos mallit saadaan optimoitua tarpeeksi (WebAssembly/WebGPU), voidaan siirtyä Vaihtoehto B:hen, jolloin edes paikallista taustapalvelinta ei tarvita, vaan kaikki laskenta tapahtuu suoraan selaimessa. Suomen kielen laatuvaatimukset tekevät tästä kuitenkin MVP-vaiheessa riskialttiimman.
 
 ## 3. MVP:n Tekninen Arkkitehtuuri
 
-*   **Käyttöliittymä (UI):** React tai Vue.js, paketoituna **Taurilla** (Rust-pohjainen taustajärjestelmä).
+*   **Käyttöliittymä (UI):** React tai Vue.js, toimii puhtaasti **selaimessa** (PWA).
+*   **Tallennus ja Salaus (UUSI):** Selaimen **IndexedDB** paikalliseen tallennukseen. Tallennus salataan selaimessa käyttäjän syöttämällä salasanalla käyttäen **Web Crypto API:n AES-GCM** salausta.
 *   **Puheentunnistus (ASR):** **Whisper.cpp** (C/C++ implementaatio OpenAI:n Whisperistä). Se on optimoitu toimimaan CPU:lla (ja Apple Siliconilla), joten se ei vaadi käyttäjältä kalliita näytönohjaimia.
     *   *Malli:* **Whisper Small tai Base** (tai erikseen suomeen hienosäädetty malli, esim. Hugging Facesta). Small tarjoaa yleensä riittävää tarkkuutta suomen kielessä MVP-vaiheeseen.
 *   **Terminologian korjauskerros ja Rakenteistus:** **Paikallinen LLM (Large Language Model) jälkikäsittelyvaiheena.**
@@ -70,9 +84,9 @@ Käyttöliittymä on selainpohjainen sovellus (PWA), mutta se kommunikoi erillis
 *   Tavoite: Raakatekstin korjaaminen ja rakenteistaminen.
 *   Tehtävät: Llama.cpp integraatio paikallista LLM:ää varten. Yhden tai kahden käyntityyppipohjan (esim. "Fysioterapia - Alkustatus", "Hammaslääkäri - Tarkastus") promptin hiominen. LLM:n kvantisointi, jotta se pyörii myös peruskannettavilla.
 
-**Vaihe 3: Käyttöliittymä, UX ja Paketointi**
-*   Tavoite: Käyttäjäystävällinen sovellus ja helppo asennus.
-*   Tehtävät: Tauri-käyttöliittymän viimeistely. Leikepöytäintegraatio (tekstin helppo kopiointi yhdellä painikkeella). Asennuspaketin luominen.
+**Vaihe 3: Käyttöliittymä, UX ja Paketointi/Asennus**
+*   Tavoite: Käyttäjäystävällinen sovellus ja helppo asennus/käyttöönotto.
+*   Tehtävät: PWA-käyttöliittymän viimeistely. Leikepöytäintegraatio (tekstin helppo kopiointi yhdellä painikkeella). Paikallisen taustapalvelun kevyen asennuspaketin luominen tai ohjeistus.
 
 **Vaihe 4: MVP Beta-testaus**
 *   Tavoite: Palautteen kerääminen rajatulta kohderyhmältä todellisessa työympäristössä.
@@ -89,3 +103,27 @@ Käyttöliittymä on selainpohjainen sovellus (PWA), mutta se kommunikoi erillis
 3.  **Tietosuoja-arkkitehtuuri ja Vastuut:** Vaikka data ei siirry pilveen, on varmistettava, ettei saneludata (audio tai teksti) tallennu selkokielisenä tietokoneen levylle (esim. lokitiedostoihin) pysyvästi vahingossa. MVP:ssä kaikki pitäisi käsitellä vain välimuistissa ja poistaa ohjelman sulkeutuessa.
 4.  **Jakelu ja Asennus:** Raskaat paikalliset kielimallit kasvattavat asennuspaketin kokoa (helposti useita gigatavuja). Tämä saattaa olla hidasta tai hämmentävää asentaa. Vaihtoehtoisesti voidaan jakaa kevyt asennuspaketti, joka lataa mallit taustalla ensimmäisen käynnistyksen yhteydessä.
 5.  **Käyttöjärjestelmät (Mac vs. Windows):** Paikallisten mallien saaminen pyörimään tehokkaasti (esim. laitteistokiihdytyksellä) vaatii hieman erilaista optimointia Apple Silicon -koneille ja Windows-koneille, joissa voi olla hyvinkin vaihtelevaa rautaa.
+
+## 6. Esihenkilön / Liiketoimintajohdon Huomiot: Ratkaistavat esteet ennen toteutusta
+
+Esihenkilön ja tuoteomistajan näkökulmasta projektissa on teknisen koodaamisen lisäksi merkittäviä strategisia ja liiketoiminnallisia kysymyksiä, jotka täytyy ratkaista tai ainakin linjata ennen kuin kehittäjät aloittavat koodaamisen:
+
+### 1. "Salasanan Unohtuminen" -skenaario (Tietoturva vs. Käytettävyys)
+Jos käytämme selaimen sisäistä salausta (AES-GCM), jossa avain on käyttäjän pääsalasana, **käyttäjä menettää kaikki kirjatut tekstinsä lopullisesti, jos hän unohtaa salasanansa**.
+*   *Päätös:* Hyväksymmekö tämän riskin MVP:ssä (korostettu varoitus käyttäjälle), vai tarvitaanko monimutkaisempi salasanan palautusmekanismi (mikä heikentää "täysin lokaalia" lupausta)? MVP:ssä kirjaukset on joka tapauksessa tarkoitus siirtää potilastietojärjestelmään päivän päätteeksi, joten vanhojen saneluiden menetys ei saisi olla katastrofi. Tämä käyttöohjeistus on lyötävä lukkoon.
+
+### 2. Keskivertokäyttäjän IT-taidot ja Asennustuki
+Vaikka käyttöliittymä on selainpohjainen, tekoälymallit vaativat paikallisen taustapalvelun pyörimään koneella. Fysioterapeutit/hammaslääkärit eivät ole IT-asiantuntijoita.
+*   *Päätös:* Miten taustapalvelimen (esim. Whisper.cpp) asennus tehdään idioottivarmaksi? Jos asennus vaatii komentorivin käyttöä, MVP kaatuu heti asennettavuuteen. Tarvitsemme resursointia rakentamaan "yhden klikkauksen" asennusohjelman (.exe/.dmg) taustapalvelulle, sekä kapasiteettia asiakastukeen.
+
+### 3. Laitteistokanta (Hardware-todellisuus)
+Oletamme, että tekoälymallit pyörivät "paikallisesti". Todellisuudessa monella yksityisyrittäjällä on käytössään 5-7 vuotta vanha kannettava ilman erillistä näytönohjainta.
+*   *Päätös:* Ennen koodauksen aloitusta on testattava *hitaimmalla mahdollisella* testikoneella (esim. vanha Intel i5 -läppäri), kuinka kauan 5 minuutin sanelun prosessointi suomenkielisellä mallilla kestää. Jos se kestää 15 minuuttia, tuote ei ole käyttökelpoinen. Meidän on määriteltävä selkeät minimilaitteistovaatimukset ennen markkinointia.
+
+### 4. MDR (Medical Device Regulation) -Rajavedon virallistaminen
+Olemme olettaneet, ettei työkalu ole lääkinnällinen laite, koska se vain "dokumentoi". Jos kuitenkin LLM tekee vahingossa terminologiavirheen (esim. muuttaa "ei leikata" muotoon "leikataan" tai jättää olennaisen negatiivisen löydöksen pois), kuka on vastuussa?
+*   *Päätös:* Tarvitsemme juristin lausunnon, riittääkö käyttöehtoihin (EULA) vastuuvapauslauseke: "Ammattilaisen on aina tarkistettava tekoälyn tuottama teksti ennen tallentamista potilasrekisteriin".
+
+### 5. Lisensointi- ja Kaupallinen malli
+Koska ohjelmisto toimii täysin lokaalisti, emme voi luotettavasti "katkaista" käyttöoikeutta pilvestä, jos asiakas lopettaa kuukausimaksun maksamisen (ellemme rakenna ohjelmaan pakollista nettiyhteyden "lisenssitarkistusta", mikä vähentää ohjelman luotettavuutta ja rikkoo offline-idean).
+*   *Päätös:* Myymmekö ohjelman kertamaksulla (esim. 500 € kertaostos + valinnaiset vuosittaiset päivitykset) vai rakennammeko DRM-lisenssitarkistuksen kuukausilaskutusta varten? Tämä vaikuttaa suoraan ohjelmiston arkkitehtuuriin.
