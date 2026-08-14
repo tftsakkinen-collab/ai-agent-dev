@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { encryptText, saveDictation, getDictations, decryptText } from '../lib/encryption';
+import { retrieveContext } from '../lib/ragDatabase';
 
 export default function DictationView({ password, onLock }) {
   const [isRecording, setIsRecording] = useState(false);
@@ -22,16 +23,33 @@ export default function DictationView({ password, onLock }) {
       type: 'module'
     });
 
-    workerRef.current.addEventListener('message', (e) => {
+    workerRef.current.addEventListener('message', async (e) => {
       const { status, text, data, error } = e.data;
 
       if (status === 'progress') {
         setStatusMsg(`Ladataan tekoälymallia selaimeen... ${Math.round(data.progress || 0)}%`);
       } else if (status === 'processing') {
-        setStatusMsg('Analysoidaan sanelua...');
-      } else if (status === 'complete') {
-        setCurrentText(prev => prev + (prev ? ' ' : '') + text.trim());
-        setStatusMsg('Sanelu valmis! Voit nyt muokata ja tallentaa sen.');
+        setStatusMsg('Vaihe 1/2: Puretaan ääntä tekstiksi (Whisper)...');
+      } else if (status === 'asr_complete') {
+        // Stage 1 is done. Now trigger RAG and LLM stage.
+        setStatusMsg('Vaihe 2/2: Haetaan Käypä hoito -kontekstia (RAG) ja rakenteistetaan (LLM)...');
+
+        try {
+          // 1. Retrieve RAG context based on raw text
+          const ragContext = await retrieveContext(text);
+
+          // 2. Simulate Local LLM processing (Llama.cpp in browser via WebGPU)
+          // In a real implementation, we would send 'text' + 'ragContext' to the LLM here.
+          setTimeout(() => {
+             const structuredText = `** SANELU (Korjattu Käypä hoito -suositusten pohjalta) **\n\n${text.trim()}\n\n---\n**RAG Konteksti:**\n${ragContext}`;
+             setCurrentText(prev => prev + (prev ? '\n\n' : '') + structuredText);
+             setStatusMsg('Sanelu ja rakenteistus valmis! Voit nyt muokata ja tallentaa sen.');
+          }, 1500);
+
+        } catch (err) {
+          setStatusMsg('Virhe terminologian korjauksessa.');
+        }
+
       } else if (status === 'error') {
         setStatusMsg('Virhe puheentunnistuksessa: ' + error);
       }

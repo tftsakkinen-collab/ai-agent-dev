@@ -29,7 +29,7 @@ self.addEventListener('message', async (event) => {
             self.postMessage({ status: 'progress', data: x });
         });
 
-        self.postMessage({ status: 'processing' });
+        self.postMessage({ status: 'processing', stage: 'asr' });
 
         // Run the model on the audio data. Force output language to Finnish.
         const output = await transcriber(audioData, {
@@ -39,11 +39,14 @@ self.addEventListener('message', async (event) => {
             stride_length_s: 5,
         });
 
-        // Send the output back to the main thread
+        const rawText = output.text;
+
+        // Stage 1 Complete: Raw ASR
         self.postMessage({
-            status: 'complete',
-            text: output.text,
+            status: 'asr_complete',
+            text: rawText,
         });
+
     } catch (error) {
         self.postMessage({ status: 'error', error: error.message });
     }
